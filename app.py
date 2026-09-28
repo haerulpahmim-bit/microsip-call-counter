@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# 1. KONFIGURASI HALAMAN & TEMA DARK MODE CUSTOM
+# 1. KONFIGURASI HALAMAN
 st.set_page_config(
     page_title="Log MicroSIP",  
     page_icon="📞",
@@ -11,49 +11,17 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        .stApp {
-            background-color: #111c24;
-            color: #ffffff;
-        }
-        .main-title {
-            font-size: 32px;
-            font-weight: bold;
-            color: #ffffff;
-            margin-bottom: 0px;
-        }
-        .sub-title {
-            font-size: 14px;
-            color: #8a99a8;
-            margin-bottom: 25px;
-        }
+        .stApp { background-color: #111c24; color: #ffffff; }
+        .main-title { font-size: 32px; font-weight: bold; color: #ffffff; margin-bottom: 0px; }
+        .sub-title { font-size: 14px; color: #8a99a8; margin-bottom: 25px; }
         .metric-box {
-            background-color: #16222f;
-            border: 1px solid #233549;
-            border-radius: 6px;
-            padding: 20px;
-            text-align: left;
-            position: relative;
-            min-height: 140px;
+            background-color: #16222f; border: 1px solid #233549; border-radius: 6px;
+            padding: 20px; text-align: left; min-height: 140px;
         }
-        .metric-label {
-            font-size: 14px;
-            color: #8a99a8;
-            font-weight: 500;
-        }
-        .metric-value {
-            font-size: 45px;
-            font-weight: bold;
-            margin-top: 10px;
-            margin-bottom: 5px;
-        }
-        .val-putih { color: #ffffff; }
-        .val-hijau { color: #2ecc71; }
-        .val-merah { color: #e74c3c; }
-        
-        .metric-desc {
-            font-size: 11px;
-            color: #5c6b73;
-        }
+        .metric-label { font-size: 14px; color: #8a99a8; font-weight: 500; }
+        .metric-value { font-size: 45px; font-weight: bold; margin-top: 10px; margin-bottom: 5px; }
+        .val-putih { color: #ffffff; } .val-hijau { color: #2ecc71; } .val-merah { color: #e74c3c; }
+        .metric-desc { font-size: 11px; color: #5c6b73; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -61,8 +29,8 @@ st.markdown("""
 st.markdown('<div class="main-title">Log MicroSIP</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Sistem otomatis menghitung performa berdasarkan file log microsip-call-log.csv.</div>', unsafe_allow_html=True)
 
-# Memperbaiki fungsi st.columns dengan rasio pembagi area kolom (Kiri lebar, tengah tanggal, kanan unggah)
-col_blank, col_date, col_upload = st.columns([3, 1, 1])
+# Layout Atas
+col_blank, col_date, col_upload = st.columns([2, 1, 1])
 
 with col_date:
     hari_ini_realtime = datetime.now().date()
@@ -74,7 +42,7 @@ with col_upload:
 
 st.markdown("---")
 
-# 3. PROSES MEMBACA DAN MEMPROSES FILE CSV
+# 3. PROSES DATA CSV
 if uploaded_file is not None:
     try:
         try:
@@ -92,6 +60,11 @@ if uploaded_file is not None:
         df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
         df = df.dropna(subset=[kolom_waktu])
         
+        # --- INFO SEKILAS TOTAL KESELURUHAN FILE ---
+        total_baris_file = len(df)
+        st.info(f"📁 **Informasi File:** Berhasil membaca total **{total_baris_file} Panggilan** dari seluruh riwayat di dalam file CSV.")
+        
+        # Saring data khusus untuk tanggal yang dipilih di kalender (Hari Ini)
         df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == tanggal_str].copy()
         
         total_keseluruhan = len(df_terfilter)
@@ -123,10 +96,10 @@ if uploaded_file is not None:
         if total_keseluruhan > 0:
             df_terfilter['HASIL ANALISIS'] = df_terfilter.apply(tentukan_hasil, axis=1)
 
-        # 4. TAMPILAN KOTAK METRIK 4 KOLOM BERJAJAR
+        # 4. DASHBOARD METRIK
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Seluruh percobaan panggilan</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Hari Ini</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Seluruh panggilan tanggal {tanggal_str}</div></div>', unsafe_allow_html=True)
         with c2:
             st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Jumlah nomor unik hari ini</div></div>', unsafe_allow_html=True)
         with c3:
@@ -137,7 +110,7 @@ if uploaded_file is not None:
         st.markdown("<br>", unsafe_allow_html=True)
         
         # 5. TABEL DAFTAR PANGGILAN
-        st.subheader("📋 Daftar Panggilan")
+        st.subheader(f"📋 Daftar Panggilan Tanggal {tanggal_str}")
         if total_keseluruhan > 0:
             df_tampil = df_terfilter.copy()
             df_tampil[kolom_waktu] = df_tampil[kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -145,17 +118,16 @@ if uploaded_file is not None:
                 df_tampil = df_tampil.drop(columns=['DURASI_BERSIH'])
             st.dataframe(df_tampil, use_container_width=True)
         else:
-            st.info(f"Tidak ada data aktivitas panggilan log pada tanggal {tanggal_str}.")
+            st.info(f"Tidak ada data aktivitas panggilan log pada tanggal {tanggal_str}. Coba ubah pilihan tanggal di atas ke hari pemanggilan dilakukan.")
             
     except Exception as e:
         st.error(f"Gagal memproses berkas log CSV. Pastikan struktur kolom sudah sesuai. Error: {e}")
 else:
     c1, c2, c3, c4 = st.columns(4)
     for col, label, desc, color in zip([c1,c2,c3,c4], 
-                                      ["Total Keseluruhan", "Total Satuan (Unique)", "Terhubung (>5s)", "Gagal (Unavailable)"],
-                                      ["Seluruh percobaan panggilan", "Jumlah nomor unik hari ini", "Panggilan tersambung valid", "Layanan tidak tersedia/Gagal"],
+                                      ["Total Hari Ini", "Total Satuan (Unique)", "Terhubung (>5s)", "Gagal (Unavailable)"],
+                                      ["Seluruh panggilan hari ini", "Jumlah nomor unik hari ini", "Panggilan tersambung valid", "Layanan tidak tersedia/Gagal"],
                                       ["val-putih", "val-putih", "val-hijau", "val-merah"]):
         with col:
             st.markdown(f'<div class="metric-box"><div class="metric-label">{label}</div><div class="metric-value {color}">0</div><div class="metric-desc">{desc}</div></div>', unsafe_allow_html=True)
-            
     st.info("👋 Silakan klik tombol unggah berkas di kanan atas untuk memproses data log CSV Anda.")
