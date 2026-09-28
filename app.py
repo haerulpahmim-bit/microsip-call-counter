@@ -22,8 +22,6 @@ st.markdown("""
         .metric-value { font-size: 45px; font-weight: bold; margin-top: 10px; margin-bottom: 5px; }
         .val-putih { color: #ffffff; } .val-hijau { color: #2ecc71; } .val-merah { color: #e74c3c; }
         .metric-desc { font-size: 11px; color: #5c6b73; }
-        
-        /* Mengatur style tombol radio/opsi pilihan agar terlihat rapi di dark mode */
         div[data-testid="stRadio"] > label { color: #ffffff !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -32,11 +30,10 @@ st.markdown("""
 st.markdown('<div class="main-title">Log MicroSIP</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Sistem otomatis menghitung performa panggilan aplikasi MicroSIP.</div>', unsafe_allow_html=True)
 
-# Mengatur tata letak bagian atas pembagian opsi dan unggah berkas
-col_opsi, col_upload = st.columns([2, 1])
+# Tata letak bagian atas pembagian opsi dan unggah berkas
+col_opsi, col_upload = st.columns(2)
 
 with col_opsi:
-    # OPSI PILIHAN FILTER DATA
     opsi_tampilan = st.radio(
         "📊 Pilih Tampilan Data Panggilan:",
         ["Panggilan Hari Ini Saja", "Semua Riwayat Log (Tanpa Filter Tanggal)"],
@@ -51,7 +48,6 @@ st.markdown("---")
 # 3. PROSES PENGOLAHAN FILE CSV
 if uploaded_file is not None:
     try:
-        # Cek tipe separator otomatis
         sample_bytes = uploaded_file.read(1024)
         sample_str = sample_bytes.decode('utf-8', errors='ignore')
         uploaded_file.seek(0)
@@ -61,8 +57,6 @@ if uploaded_file is not None:
             sep_terpilih = ';'
             
         df = pd.read_csv(uploaded_file, sep=sep_terpilih)
-        
-        # Bersihkan nama kolom dari spasi
         df.columns = df.columns.str.strip()
         
         # --- SISTEM DETEKSI KOLOM TINGKAT TINGGI ---
@@ -100,20 +94,25 @@ if uploaded_file is not None:
         if not kolom_status:
             kolom_status = df.columns[3] if len(df.columns) > 3 else df.columns[0]
 
-        # Konversi kolom waktu ke datetime secara aman
+        # Konversi kolom waktu ke datetime
         df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
         df = df.dropna(subset=[kolom_waktu])
         
-        # --- LOGIKA PENYARINGAN BERDASARKAN OPSI PILIHAN USER ---
+        # --- LOGIKA PENYARINGAN CERDAS DENGAN FALLBACK HARI KERJA TERAKHIR ---
         if opsi_tampilan == "Panggilan Hari Ini Saja":
-            # Ambil tanggal hari ini di dunia nyata
-            hari_ini_str = datetime.now().strftime('%Y-%m-%d')
-            df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == hari_ini_str].copy()
-            label_waktu = "Hari Ini"
+            hari_ini_realtime = datetime.now().strftime('%Y-%m-%d')
+            df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == hari_ini_realtime].copy()
+            label_waktu = f"Hari Ini ({datetime.now().strftime('%d/%m/%Y')})"
+            
+            # FITUR AMAN: Jika hari ini kosong, ambil tanggal terbaru dari file log Anda
+            if len(df_terfilter) == 0 and not df.empty:
+                tanggal_terakhir_log = df[kolom_waktu].max().date()
+                df_terfilter = df[df[kolom_waktu].dt.date == tanggal_terakhir_log].copy()
+                label_waktu = f"Hari Kerja Terakhir ({tanggal_terakhir_log.strftime('%d/%m/%Y')})"
+                st.warning(f"ℹ️ Belum ada panggilan baru untuk hari ini. Menampilkan data aktivitas kerja terakhir pada tanggal **{tanggal_terakhir_log.strftime('%d %B %Y')}**.")
         else:
-            # Mengambil semua riwayat data log panggilan tanpa filter tanggal
             df_terfilter = df.copy()
-            label_waktu = "Semua Riwayat"
+            label_waktu = "Semua Riwayat Log"
 
         total_keseluruhan = len(df_terfilter)
         total_unique = df_terfilter[kolom_nomor].nunique() if total_keseluruhan > 0 else 0
@@ -147,7 +146,7 @@ if uploaded_file is not None:
         # 4. TAMPILAN DASHBOARD METRIK
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Panggilan ({label_waktu})</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">{label_waktu}</div></div>', unsafe_allow_html=True)
         with c2:
             st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Nomor unik dihubungi</div></div>', unsafe_allow_html=True)
         with c3:
