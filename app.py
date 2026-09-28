@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
+import os
+import time
 from datetime import datetime
 
-# 1. KONFIGURASI HALAMAN
+# 1. KONFIGURASI HALAMAN & TEMA DARK MODE CUSTOM
 st.set_page_config(
     page_title="Log MicroSIP",  
     page_icon="📞",
@@ -27,80 +29,62 @@ st.markdown("""
 
 # 2. HEADER UTAMA
 st.markdown('<div class="main-title">Log MicroSIP</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Sistem otomatis menghitung performa berdasarkan file log microsip-call-log.csv.</div>', unsafe_allow_html=True)
-
-# Layout Atas pembagian tombol
-col_blank, col_date, col_upload = st.columns([1, 1, 2])
-
-with col_date:
-    hari_ini_realtime = datetime.now().date()
-    tanggal_pilihan = st.date_input("Pilih Tanggal Log:", hari_ini_realtime, label_visibility="collapsed")
-    tanggal_str = tanggal_pilihan.strftime('%Y-%m-%d')
-
-with col_upload:
-    uploaded_file = st.file_uploader("IMPORT LOG CSV", type=["csv"], label_visibility="collapsed")
+st.markdown('<div class="sub-title">Sistem otomatis menghitung performa performa panggilan aplikasi MicroSIP secara Realtime.</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
-# 3. PROSES PENGOLAHAN FILE CSV DENGAN LOGIKA DETEKSI JITU
-if uploaded_file is not None:
+# 3. PENGATURAN LOKASI FILE LOG MICROSIP DI KOMPUTER ANDA
+# Secara default diarahkan ke folder Roaming MicroSIP Windows Anda
+username_komputer = os.getlogin()
+DEFAULT_PATH = f"C:\\Users\\{username_komputer}\\AppData\\Roaming\\MicroSIP\\microsip-call-log.csv"
+
+st.sidebar.header("⚙️ Konfigurasi Path Realtime")
+path_file = st.sidebar.text_input("Lokasi File Log MicroSIP:", DEFAULT_PATH)
+
+# Ambil tanggal HARI INI secara realtime
+hari_ini_str = datetime.now().strftime('%Y-%m-%d')
+
+# Jalankan pengecekan file
+if os.path.exists(path_file):
     try:
-        # PINTU 1: Deteksi otomatis separator pembagi isi file CSV Anda
-        # Membaca 2 baris awal untuk melihat apakah isinya dipisah tanda titik koma (;) atau koma (,)
-        sample_bytes = uploaded_file.read(1024)
-        sample_str = sample_bytes.decode('utf-8', errors='ignore')
-        uploaded_file.seek(0) # Kembalikan posisi pembacaan ke awal file
-        
-        sep_terpilih = ','
-        if ';' in sample_str and sample_str.count(';') > sample_str.count(','):
-            sep_terpilih = ';'
-        elif '\t' in sample_str:
-            sep_terpilih = '\t'
+        # Membaca log dengan deteksi pembatas otomatis
+        try:
+            df = pd.read_csv(path_file, sep=',')
+        except:
+            df = pd.read_csv(path_file, sep=';')
             
-        # PINTU 2: Memuat file ke database pandas menggunakan separator hasil deteksi
-        df = pd.read_csv(uploaded_file, sep=sep_terpilih)
-        
-        # Bersihkan spasi kosong dan ubah nama judul baris kolom menjadi HURUF BESAR
         df.columns = df.columns.str.strip().str.upper()
         
-        # PINTU 3: Pemetaan nama kolom cadangan agar tidak bergantung 1 nama mutlak
-        kolom_waktu = next((col for col in ['WAKTU', 'TANGGAL', 'TIME', 'DATE', 'TIMESTAMP', 'START_TIME'] if col in df.columns), df.columns[0])
-        kolom_nomor = next((col for col in ['NOMOR TUJUAN', 'NOMOR', 'NUMBER', 'PHONE', 'DESTINATION', 'DST', 'CALLEE'] if col in df.columns), df.columns[1] if len(df.columns) > 1 else df.columns[0])
-        kolom_durasi = next((col for col in ['DURASI', 'DURATION', 'BILLSEC', 'SEC', 'DURATION_SEC'] if col in df.columns), df.columns[2] if len(df.columns) > 2 else df.columns[0])
-        kolom_status = next((col for col in ['STATUS', 'DISPOSITION', 'HASIL', 'TYPE', 'STATE'] if col in df.columns), df.columns[3] if len(df.columns) > 3 else df.columns[0])
+        # Pemetaan kolom otomatis
+        kolom_waktu = next((col for col in ['WAKTU', 'TANGGAL', 'TIME', 'DATE', 'TIMESTAMP'] if col in df.columns), df.columns)
+        kolom_nomor = next((col for col in ['NOMOR TUJUAN', 'NOMOR', 'NUMBER', 'PHONE', 'DST'] if col in df.columns), df.columns if len(df.columns) > 1 else df.columns)
+        kolom_durasi = next((col for col in ['DURASI', 'DURATION', 'BILLSEC', 'SEC'] if col in df.columns), df.columns if len(df.columns) > 2 else df.columns)
+        kolom_status = next((col for col in ['STATUS', 'DISPOSITION', 'HASIL'] if col in df.columns), df.columns if len(df.columns) > 3 else df.columns)
 
-        # PINTU 4: Konversi waktu pintar dan proteksi data agar tidak hilang/NaN
+        # Konversi kolom waktu ke format tanggal
         df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
+        df = df.dropna(subset=[kolom_waktu])
         
-        # Jika konversi tanggal gagal total karena format aneh, gunakan tanggal hari ini sebagai fallback agar data tidak hilang
-        df[kolom_waktu] = df[kolom_waktu].fillna(pd.Timestamp(datetime.now().date()))
+        # KUNCI REALTIME: Filter ketat HANYA tanggal hari ini saja
+        df_realtime = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == hari_ini_str].copy()
         
-        # --- CARA CEK JUMLAH PANGGILAN HARI INI SECARA LANGSUNG ---
-        # Saring data yang harinya cocok dengan pilihan kalender halaman utama
-        df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == tanggal_str].copy()
+        # Hitung statistik khusus hari ini
+        total_keseluruhan = len(df_realtime)
+        total_unique = df_realtime[kolom_nomor].nunique() if total_keseluruhan > 0 else 0
         
-        # JIKA FILTER TANGGAL HARI INI TERNYATA KOSONG, KITA AMBIL SELURUH DATA DALAM FILE AGAR TETAP KELUAR TAMPILANNYA
-        apakah_kosong_hari_ini = False
-        if len(df_terfilter) == 0:
-            df_terfilter = df.copy()
-            apakah_kosong_hari_ini = True
-            
-        total_keseluruhan = len(df_terfilter)
-        total_unique = df_terfilter[kolom_nomor].nunique() if total_keseluruhan > 0 else 0
-        
-        # Pembersihan teks durasi (hilangkan huruf 's' jika ada, contoh: '45s' menjadi 45)
-        if df_terfilter[kolom_durasi].dtype == object:
-            df_terfilter['DURASI_BERSIH'] = df_terfilter[kolom_durasi].astype(str).str.replace('s', '', case=False).str.strip()
-            durasi_detik = pd.to_numeric(df_terfilter['DURASI_BERSIH'], errors='coerce').fillna(0)
+        if total_keseluruhan > 0 and df_realtime[kolom_durasi].dtype == object:
+            df_realtime['DURASI_BERSIH'] = df_realtime[kolom_durasi].astype(str).str.replace('s', '', case=False).str.strip()
+            durasi_detik = pd.to_numeric(df_realtime['DURASI_BERSIH'], errors='coerce').fillna(0)
         else:
-            durasi_detik = pd.to_numeric(df_terfilter[kolom_durasi], errors='coerce').fillna(0)
+            durasi_detik = pd.to_numeric(df_realtime[kolom_durasi], errors='coerce').fillna(0)
             
-        status_teks = df_terfilter[kolom_status].astype(str).str.lower()
+        status_teks = df_realtime[kolom_status].astype(str).str.lower()
         
-        # Pembagian logic sukses / gagal terhubung
-        terhubung = len(df_terfilter[(durasi_detik > 5) & (~status_teks.str.contains('unavailable|failed|busy|no answer|gagal', na=False))])
+        # Logika Terhubung & Gagal
+        terhubung = len(df_realtime[(durasi_detik > 5) & (~status_teks.str.contains('unavailable|failed|busy|no answer|gagal', na=False))])
         gagal = total_keseluruhan - terhubung
         
+        # Buat label analisis tabel
         def tentukan_hasil(row):
             try:
                 dur_str = str(row[kolom_durasi]).lower().replace('s', '').strip()
@@ -114,49 +98,37 @@ if uploaded_file is not None:
                 return "Gagal"
                 
         if total_keseluruhan > 0:
-            df_terfilter['HASIL ANALISIS'] = df_terfilter.apply(tentukan_hasil, axis=1)
+            df_realtime['HASIL ANALISIS'] = df_realtime.apply(tentukan_hasil, axis=1)
 
-        # 4. CETAK TAMPILAN KOTAK METRIK
+        # 4. TAMPILAN DASHBOARD METRIK REALTIME
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Seluruh riwayat panggilan dimuat</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Total panggilan hari ini</div></div>', unsafe_allow_html=True)
         with c2:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Jumlah nomor unik terdata</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Nomor unik dihubungi hari ini</div></div>', unsafe_allow_html=True)
         with c3:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Terhubung (&gt;5s)</div><div class="metric-value val-hijau">{terhubung}</div><div class="metric-desc">Panggilan tersambung valid</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Terhubung (&gt;5s)</div><div class="metric-value val-hijau">{terhubung}</div><div class="metric-desc">Panggilan tersambung sukses</div></div>', unsafe_allow_html=True)
         with c4:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Gagal (Unavailable)</div><div class="metric-value val-merah">{gagal}</div><div class="metric-desc">Layanan tidak tersedia/Gagal</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Gagal (Unavailable)</div><div class="metric-value val-merah">{gagal}</div><div class="metric-desc">Panggilan gagal/tidak terjawab</div></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Beri notifikasi cerdas jika data yang keluar bukan tanggal hari ini
-        if apakah_kosong_hari_ini:
-            st.warning(f"ℹ️ **Info:** Tidak ada aktivitas log pada tanggal kalender ({tanggal_str}). Sistem otomatis menampilkan **Semua {total_keseluruhan} Baris Data Panggilan** yang ada di dalam file Anda.")
-        
-        # 5. TABEL DAFTAR PANGGILAN
-        st.subheader("📋 Daftar Panggilan")
-        df_tampil = df_terfilter.copy()
-        
-        # Tampilkan format waktu string agar rapi dibaca manusia di tabel bawah
-        try:
+        # 5. TABEL HASIL HARI INI
+        st.subheader(f"📋 Daftar Panggilan Hari Ini ({datetime.now().strftime('%d %B %Y')})")
+        if total_keseluruhan > 0:
+            df_tampil = df_realtime.copy()
             df_tampil[kolom_waktu] = df_tampil[kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
-        except:
-            pass
-            
-        if 'DURASI_BERSIH' in df_tampil.columns:
-            df_tampil = df_tampil.drop(columns=['DURASI_BERSIH'])
-            
-        st.dataframe(df_tampil, use_container_width=True)
+            if 'DURASI_BERSIH' in df_tampil.columns:
+                df_tampil = df_tampil.drop(columns=['DURASI_BERSIH'])
+            st.dataframe(df_tampil, use_container_width=True)
+        else:
+            st.info("🟢 Belum ada aktivitas panggilan yang tercatat untuk hari ini.")
             
     except Exception as e:
-        st.error(f"Gagal memproses berkas log CSV. Pastikan struktur kolom sudah sesuai. Error: {e}")
+        st.error(f"Gagal membaca file log realtime. Error: {e}")
 else:
-    c1, c2, c3, c4 = st.columns(4)
-    for col, label, desc, color in zip([c1,c2,c3,c4], 
-                                      ["Total Keseluruhan", "Total Satuan (Unique)", "Terhubung (>5s)", "Gagal (Unavailable)"],
-                                      ["Seluruh percobaan panggilan", "Jumlah nomor unik hari ini", "Panggilan tersambung valid", "Layanan tidak tersedia/Gagal"],
-                                      ["val-putih", "val-putih", "val-hijau", "val-merah"]):
-        with col:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">{label}</div><div class="metric-value {color}">0</div><div class="metric-desc">{desc}</div></div>', unsafe_allow_html=True)
-            
-    st.info("👋 Silakan klik tombol unggah berkas di kanan atas untuk memproses data log CSV Anda.")
+    st.warning(f"🚨 File log MicroSIP tidak ditemukan di lokasi: `{path_file}`. Pastikan aplikasi MicroSIP terinstal di komputer ini atau sesuaikan lokasinya di sidebar menu sebelah kiri.")
+
+# AUTO REFRESH HALAMAN SETIAP 2 DETIK
+time.sleep(2)
+st.rerun()
