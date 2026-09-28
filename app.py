@@ -1,6 +1,6 @@
-import streamlit as pd
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 # Konfigurasi halaman utama
 st.set_page_config(page_title="MicroSIP Call Counter", page_icon="📞", layout="centered")
@@ -19,14 +19,41 @@ if uploaded_file is not None:
         # Bersihkan nama kolom dari spasi yang tidak sengaja
         df.columns = df.columns.str.strip()
         
-        st.success("File berhasil diunggah!")
+        # --- Proses Deteksi & Filter Tanggal ---
+        # Mencari kolom yang berisi informasi waktu/tanggal (biasanya kolom pertama atau mengandung kata 'date'/'time')
+        kolom_waktu = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
+        if not kolom_waktu and len(df.columns) > 0:
+            kolom_waktu = [df.columns[0]]  # Mengambil kolom pertama jika tidak terdeteksi otomatis
+            
+        if kolom_waktu:
+            nama_kolom_waktu = kolom_waktu[0]
+            # Mengubah data ke format datetime secara fleksibel
+            df[nama_kolom_waktu] = pd.to_datetime(df[nama_kolom_waktu], errors='coerce')
+            
+            # Buat filter di Sidebar agar tampilan utama tetap rapi
+            st.sidebar.header("📅 Filter Waktu")
+            opsi_filter = st.sidebar.radio(
+                "Pilih Rentang Analisis:",
+                ["Semua Riwayat Data", "Khusus Hari Ini", "Pilih Tanggal Kustom"]
+            )
+            
+            hari_ini = datetime.today().date()
+            
+            if opsi_filter == "Khusus Hari Ini":
+                df = df[df[nama_kolom_waktu].dt.date == hari_ini]
+            elif opsi_filter == "Pustom Tanggal Kustom":
+                tgl_mulai = st.sidebar.date_input("Tanggal Mulai", hari_ini)
+                tgl_selesai = st.sidebar.date_input("Tanggal Selesai", hari_ini)
+                df = df[(df[nama_kolom_waktu].dt.date >= tgl_mulai) & (df[nama_kolom_waktu].dt.date <= tgl_selesai)]
+        
+        st.success("File berhasil diproses!")
         
         # --- Bagian Informasi & Statistik ---
         st.subheader("📊 Ringkasan Log Panggilan")
         
-        # Tampilkan Total Baris/Panggilan
+        # Tampilkan Total Baris/Panggilan setelah difilter
         total_panggilan = len(df)
-        st.metric(label="Total Riwayat Panggilan", value=f"{total_panggilan} Panggilan")
+        st.metric(label="Total Panggilan Terhitung", value=f"{total_panggilan} Panggilan")
         
         # Mencari kolom status secara otomatis (misal: 'Status', 'Type', 'Direction')
         kolom_status = [col for col in df.columns if 'status' in col.lower() or 'type' in col.lower() or 'dir' in col.lower()]
@@ -56,17 +83,15 @@ if uploaded_file is not None:
         
         # Jika user mengetik sesuatu, filter dataframe-nya
         if search_query:
-            # Mencari di semua kolom teks
             mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
             df_filtered = df[mask]
             st.write(f"Ditemukan {len(df_filtered)} baris data:")
             st.dataframe(df_filtered)
         else:
-            # Tampilkan 10 data teratas secara default
-            st.write("10 Data Log Teratas:")
-            st.dataframe(df.head(10))
+            st.write("Data Log Teratas yang Sesuai Filter:")
+            st.dataframe(df.head(20))
             
     except Exception as e:
         st.error(f"Gagal memproses file CSV. Pastikan formatnya benar. Error: {e}")
 else:
-    st.info("💡 Petunjuk: File log MicroSIP biasanya berada di folder `%%APPDATA%%\\MicroSIP\\Log.csv` pada komputer Anda.")
+    st.info("💡 Petunjuk: Unggah file `Log.csv` Anda. Anda dapat mengubah filter rentang tanggal pada menu **Sidebar di sebelah kiri** setelah file berhasil diunggah.")
