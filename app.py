@@ -166,19 +166,16 @@ if uploaded_file is not None:
         else:
             st.warning("⚠️ Kunci API Gemini (`GEMINI_API_KEY`) belum dikonfigurasi di Streamlit Secrets. Fitur AI Agent dinonaktifkan.")
 
-        # --- 5. Tabel Data Explorer (Pencarian & Penempatan Data Tepat di Bawah Kolom) ---
+        # --- 5. Tabel Data Explorer ---
         st.markdown("---")
         st.subheader("🔍 Penjelajah Data Log")
         
-        # Kolom input pencarian text
         search_query = st.text_input("Cari data (Ketik nomor, nama kontak, status, atau kata kunci lainnya):")
         
-        # Siapkan DataFrame display
         df_display = df.copy()
         if nama_kolom_durasi: df_display[nama_kolom_durasi] = df_display[nama_kolom_durasi].apply(format_durasi)
         if nama_kolom_waktu: df_display[nama_kolom_waktu] = df_display[nama_kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Logika pemotongan data secara dinamis berdasarkan input pencarian
         if search_query:
             mask = df_display.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
             df_display = df_display[mask]
@@ -186,13 +183,17 @@ if uploaded_file is not None:
         else:
             st.info(f"📋 **Jumlah Total Panggilan Terfilter ({keterangan_tanggal}):** {len(df_display)} Panggilan")
             
-        # Tabel data diletakkan tepat di bawah notifikasi informasi jumlah data
         st.dataframe(df_display, use_container_width=True)
         
-        # Tombol Download laporan ekspor data
         csv_data = df_display.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Unduh Laporan (.CSV)",
             data=csv_data,
             file_name=f"Laporan_MicroSIP_{datetime.now().strftime('%Y%m%d')}.csv",
             mime='text/csv',
+        )
+            
+    except Exception as e:
+        st.error(f"Gagal memproses file CSV. Error: {e}")
+else:
+    st.info("💡 Petunjuk: Silakan unggah file `Log.csv` dari folder data lokal aplikasi MicroSIP Anda untuk memulai.")
