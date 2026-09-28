@@ -6,7 +6,7 @@ from datetime import datetime
 st.set_page_config(page_title="Analisis Log Panggilan CSV", page_icon="📊", layout="centered")
 
 st.title("📞 Dasbor Penghitung Panggilan (Via CSV)")
-st.write("Unggah file log panggilan berformat **.csv** untuk melihat statistik mendalam hari ini.")
+st.write("Unggah file log panggilan berformat **.csv** untuk melihat statistik panggilan.")
 
 # Tombol Unggah File
 uploaded_file = st.file_uploader("Pilih file CSV", type=["csv"])
@@ -19,82 +19,96 @@ if uploaded_file is not None:
         except:
             df = pd.read_csv(uploaded_file, sep=';')
         
-        # Membersihkan spasi pada nama kolom (jika ada)
+        # Membersihkan spasi pada nama kolom
         df.columns = df.columns.str.strip()
         
         st.success("File CSV berhasil dimuat!")
         
-        # Deteksi otomatis nama kolom yang fleksibel
-        kolom_status = next((col for col in ['status', 'Status', 'type', 'Type', 'disposition', 'Disposition'] if col in df.columns), None)
-        kolom_durasi = next((col for col in ['duration', 'Durasi', 'durasi', 'Duration', 'billsec', 'Billsec'] if col in df.columns), None)
-        kolom_waktu = next((col for col in ['waktu', 'Waktu', 'time', 'Time', 'date', 'Date', 'Tanggal', 'tanggal'] if col in df.columns), None)
-        kolom_nomor = next((col for col in ['nomor', 'Nomor', 'number', 'Number', 'phone', 'Phone', 'src', 'dst'] if col in df.columns), None)
-
-        # Ambil tanggal hari ini (Format YYYY-MM-DD)
-        hari_ini = datetime.now().strftime('%Y-%m-%d')
+        # Menampilkan pilihan kolom agar pengguna bisa mencocokkan sendiri jika deteksi otomatis gagal
+        st.sidebar.header("⚙️ Pengaturan Kolom CSV")
         
-        # Pastikan kolom waktu terdeteksi untuk melakukan filter hari ini
-        if kolom_waktu:
-            df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce')
-            df_hari_ini = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == hari_ini]
-        else:
-            df_hari_ini = pd.DataFrame()
-            st.warning("⚠️ Kolom Tanggal/Waktu tidak terdeteksi. Statistik 'Hari Ini' tidak dapat dihitung.")
+        # Deteksi otomatis atau pilih manual nama kolom
+        def cari_kolom(pilihan_kata, default_index=0):
+            for col in df.columns:
+                if col.lower() in [p.lower() for p in pilihan_kata]:
+                    return df.columns.get_loc(col)
+            return default_index
 
-        # --- VALIDASI DATA HARI INI ---
-        if not df_hari_ini.empty:
-            st.subheader(f"📅 Statistik Khusus Hari Ini ({datetime.now().strftime('%d %B %Y')})")
-            
-            # 1. Total Keseluruhan Hari Ini
-            total_hari_ini = len(df_hari_ini)
-            
-            # 2. Total Terhubung & Gagal Hari Ini
-            terhubung_hari_ini = 0
-            gagal_hari_ini = 0
-            
-            if kolom_status:
-                status_series = df_hari_ini[kolom_status].astype(str).str.lower()
-                # Terhubung jika status mengandung kata answered, success, terhubung, atau OK
-                terhubung_hari_ini = len(df_hari_ini[status_series.str.contains('answered|success|terhubung|ok|connected', na=False)])
-                gagal_hari_ini = total_hari_ini - terhubung_hari_ini
-            elif kolom_durasi:
-                # Alternatif jika kolom status tidak ada: Jika durasi > 0 maka terhubung
-                durasi_numeric = pd.to_numeric(df_hari_ini[kolom_durasi], errors='coerce').fillna(0)
-                terhubung_hari_ini = len(df_hari_ini[durasi_numeric > 0])
-                gagal_hari_ini = total_hari_ini - terhubung_hari_ini
+        idx_waktu = cari_kolom(['waktu', 'time', 'date', 'tanggal', 'timestamp'])
+        idx_status = cari_kolom(['status', 'type', 'jenis', 'disposition'])
+        idx_nomor = cari_kolom(['nomor', 'number', 'phone', 'src', 'dst', 'telepon'])
+        idx_durasi = cari_kolom(['duration', 'durasi', 'billsec'])
 
-            # 3. Total Satuan Unique (Nomor Unik) Hari Ini
-            unik_hari_ini = 0
-            if kolom_nomor:
-                unik_hari_ini = df_hari_ini[kolom_nomor].nunique()
+        kolom_waktu = st.sidebar.selectbox("Kolom Tanggal/Waktu:", df.columns, index=idx_waktu)
+        kolom_status = st.sidebar.selectbox("Kolom Status (Sukses/Gagal):", df.columns, index=idx_status)
+        kolom_nomor = st.sidebar.selectbox("Kolom Nomor Telepon:", df.columns, index=idx_nomor)
+        kolom_durasi = st.sidebar.selectbox("Kolom Durasi (Opsional):", df.columns, index=idx_durasi)
 
-            # Tampilan Kartu Metrik Utama Hari Ini
+        # Mengubah kolom waktu menjadi tipe datetime dengan infer_datetime_format pintar
+        df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
+        
+        # Drop data yang tanggalnya tidak valid
+        df = df.dropna(subset=[kolom_waktu])
+
+        # --- FITUR KALENDER / PEMILIH TANGGAL HARI INI ---
+        st.markdown("---")
+        # Default diatur ke tanggal hari ini di dunia nyata
+        hari_ini_pilihan = st.date_input("📆 Pilih tanggal yang ingin dianalisis (Default: Hari Ini):", datetime.now().date())
+        hari_ini_str = hari_ini_pilihan.strftime('%Y-%m-%d')
+
+        # Filter baris berdasarkan tanggal yang dipilih pengguna
+        df_hari_ini = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == hari_ini_str]
+
+        # --- TAMPILAN STATISTIK HARI YANG DIPILIH ---
+        st.subheader(f"📊 Statistik Panggilan Tanggal: {hari_ini_pilihan.strftime('%d %B %Y')}")
+        
+        total_hari_ini = len(df_hari_ini)
+        
+        if total_hari_ini > 0:
+            # 1. Total Terhubung & Gagal
+            status_series = df_hari_ini[kolom_status].astype(str).str.lower()
+            # Kondisi Sukses: Mengandung kata 'answered', 'success', 'terhubung', 'ok', atau durasi > 0
+            durasi_numeric = pd.to_numeric(df_hari_ini[kolom_durasi], errors='coerce').fillna(0)
+            
+            terhubung_hari_ini = len(df_hari_ini[
+                status_series.str.contains('answered|success|terhubung|ok|connected|1', na=False) | 
+                (durasi_numeric > 0)
+            ])
+            gagal_hari_ini = total_hari_ini - terhubung_hari_ini
+
+            # 2. Total Nomor Unik
+            unik_hari_ini = df_hari_ini[kolom_nomor].nunique()
+
+            # Cetak Kartu Metrik Hari Ini
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("🔥 Total Panggilan", f"{total_hari_ini}")
             col2.metric("✅ Terhubung", f"{terhubung_hari_ini}")
             col3.metric("❌ Gagal", f"{gagal_hari_ini}")
             col4.metric("👤 Nomor Unik", f"{unik_hari_ini}")
             
-            # Menampilkan Tabel Log Hari Ini
-            st.write("**📋 Log Panggilan Hari Ini:**")
-            st.dataframe(df_hari_ini, use_container_width=True)
+            st.write(f"**📋 Log Panggilan Tanggal {hari_ini_pilihan.strftime('%d/%m/%Y')}:**")
+            # Kembalikan tampilan waktu ke string biasa agar mudah dibaca di tabel
+            df_tampil_hari_ini = df_hari_ini.copy()
+            df_tampil_hari_ini[kolom_waktu] = df_tampil_hari_ini[kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
+            st.dataframe(df_tampil_hari_ini, use_container_width=True)
         else:
-            if kolom_waktu:
-                st.info("ℹ️ Tidak ada aktivitas panggilan terdeteksi untuk hari ini.")
+            st.info(f"ℹ️ Tidak ada aktivitas panggilan yang tercatat pada tanggal {hari_ini_pilihan.strftime('%d %B %Y')} di dalam file CSV ini.")
 
-        # --- STATISTIK KESELURUHAN RIWAYAT ---
+        # --- KESELURUHAN DATA KESELURUHAN ---
         st.markdown("---")
-        st.subheader("📊 Statistik Semua Riwayat (All-Time)")
+        st.subheader("📁 Statistik Semua Riwayat Log (All-Time)")
         
         total_semua = len(df)
-        unik_semua = df[kolom_nomor].nunique() if kolom_nomor else "N/A"
+        unik_semua = df[kolom_nomor].nunique()
         
         c1, c2 = st.columns(2)
-        c1.metric("📁 Total Semua Log", f"{total_semua} Panggilan")
-        c2.metric("👥 Total Semua Nomor Unik", f"{unik_semua}")
+        c1.metric("Total Semua Baris Log", f"{total_semua} Panggilan")
+        c2.metric("Total Semua Nomor Unik", f"{unik_semua}")
         
-        st.write("**📋 Semua Data Log Panggilan:**")
-        st.dataframe(df, use_container_width=True)
+        st.write("**📋 Semua Data Log Panggilan (Keseluruhan):**")
+        df_tampil_semua = df.copy()
+        df_tampil_semua[kolom_waktu] = df_tampil_semua[kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
+        st.dataframe(df_tampil_semua, use_container_width=True)
             
     except Exception as e:
         st.error(f"Gagal memproses file CSV. Pastikan format file sudah benar. Error: {e}")
