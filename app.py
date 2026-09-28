@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# 1. KONFIGURASI HALAMAN
+# 1. KONFIGURASI HALAMAN & TEMA DARK MODE CUSTOM
 st.set_page_config(
     page_title="Log MicroSIP",  
     page_icon="📞",
@@ -22,14 +22,30 @@ st.markdown("""
         .metric-value { font-size: 45px; font-weight: bold; margin-top: 10px; margin-bottom: 5px; }
         .val-putih { color: #ffffff; } .val-hijau { color: #2ecc71; } .val-merah { color: #e74c3c; }
         .metric-desc { font-size: 11px; color: #5c6b73; }
+        
+        /* Mengatur style tombol radio/opsi pilihan agar terlihat rapi di dark mode */
+        div[data-testid="stRadio"] > label { color: #ffffff !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # 2. HEADER UTAMA
 st.markdown('<div class="main-title">Log MicroSIP</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Sistem otomatis menghitung performa panggilan aplikasi MicroSIP berdasarkan tanggal log terbaru.</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Sistem otomatis menghitung performa panggilan aplikasi MicroSIP.</div>', unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("IMPORT LOG CSV", type=["csv"], label_visibility="collapsed")
+# Mengatur tata letak bagian atas pembagian opsi dan unggah berkas
+col_opsi, col_upload = st.columns([2, 1])
+
+with col_opsi:
+    # OPSI PILIHAN FILTER DATA
+    opsi_tampilan = st.radio(
+        "📊 Pilih Tampilan Data Panggilan:",
+        ["Panggilan Hari Ini Saja", "Semua Riwayat Log (Tanpa Filter Tanggal)"],
+        horizontal=True
+    )
+
+with col_upload:
+    uploaded_file = st.file_uploader("IMPORT LOG CSV", type=["csv"], label_visibility="collapsed")
+
 st.markdown("---")
 
 # 3. PROSES PENGOLAHAN FILE CSV
@@ -50,19 +66,16 @@ if uploaded_file is not None:
         df.columns = df.columns.str.strip()
         
         # --- SISTEM DETEKSI KOLOM TINGKAT TINGGI ---
-        # Membuat pencarian case-insensitive (mengabaikan huruf besar/kecil)
         cols_upper = [c.upper() for c in df.columns]
         
-        # Cari Kolom Waktu/Tanggal
         kolom_waktu = None
         for i, c in enumerate(cols_upper):
             if any(k in c for k in ['WAKTU', 'TANGGAL', 'TIME', 'DATE', 'TIMESTAMP']):
                 kolom_waktu = df.columns[i]
                 break
         if not kolom_waktu:
-            kolom_waktu = df.columns[0] # Fallback kolom pertama
+            kolom_waktu = df.columns[0]
             
-        # Cari Kolom Nomor Tujuan
         kolom_nomor = None
         for i, c in enumerate(cols_upper):
             if any(k in c for k in ['NOMOR', 'NUMBER', 'PHONE', 'DST', 'TUJUAN']):
@@ -71,7 +84,6 @@ if uploaded_file is not None:
         if not kolom_nomor:
             kolom_nomor = df.columns[1] if len(df.columns) > 1 else df.columns[0]
 
-        # Cari Kolom Durasi
         kolom_durasi = None
         for i, c in enumerate(cols_upper):
             if any(k in c for k in ['DURASI', 'DURATION', 'BILLSEC', 'SEC']):
@@ -80,7 +92,6 @@ if uploaded_file is not None:
         if not kolom_durasi:
             kolom_durasi = df.columns[2] if len(df.columns) > 2 else df.columns[0]
 
-        # Cari Kolom Status
         kolom_status = None
         for i, c in enumerate(cols_upper):
             if any(k in c for k in ['STATUS', 'DISPOSITION', 'HASIL', 'TYPE', 'STATE']):
@@ -93,34 +104,32 @@ if uploaded_file is not None:
         df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
         df = df.dropna(subset=[kolom_waktu])
         
-        # Saring berdasarkan tanggal paling baru di isi file agar data tidak terlalu banyak
-        if not df.empty:
-            tanggal_aktif = df[kolom_waktu].max().date()
-            tanggal_aktif_str = tanggal_aktif.strftime('%Y-%m-%d')
-            df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == tanggal_aktif_str].copy()
+        # --- LOGIKA PENYARINGAN BERDASARKAN OPSI PILIHAN USER ---
+        if opsi_tampilan == "Panggilan Hari Ini Saja":
+            # Ambil tanggal hari ini di dunia nyata
+            hari_ini_str = datetime.now().strftime('%Y-%m-%d')
+            df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == hari_ini_str].copy()
+            label_waktu = "Hari Ini"
         else:
-            df_terfilter = pd.DataFrame()
-            tanggal_aktif = datetime.now().date()
+            # Mengambil semua riwayat data log panggilan tanpa filter tanggal
+            df_terfilter = df.copy()
+            label_waktu = "Semua Riwayat"
 
         total_keseluruhan = len(df_terfilter)
         total_unique = df_terfilter[kolom_nomor].nunique() if total_keseluruhan > 0 else 0
         
-        # Proteksi pengolahan teks durasi & status agar terhindar dari error '.str'
         terhubung = 0
         gagal = 0
         
         if total_keseluruhan > 0:
-            # Konversi kolom menjadi string biasa terlebih dahulu untuk manipulasi data aman
             durasi_series = df_terfilter[kolom_durasi].astype(str).str.replace('s', '', case=False).str.strip()
             durasi_detik = pd.to_numeric(durasi_series, errors='coerce').fillna(0)
             status_series = df_terfilter[kolom_status].astype(str).str.lower()
             
-            # Eksekusi filter hitungan terhubung dan gagal
             is_terhubung = (durasi_detik > 5) & (~status_series.str.contains('unavailable|failed|busy|no answer|gagal', na=False))
             terhubung = len(df_terfilter[is_terhubung])
             gagal = total_keseluruhan - terhubung
             
-            # Membuat fungsi penentu label tabel bawah
             def tentukan_hasil(row):
                 try:
                     dur_str = str(row[kolom_durasi]).lower().replace('s', '').strip()
@@ -138,7 +147,7 @@ if uploaded_file is not None:
         # 4. TAMPILAN DASHBOARD METRIK
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Panggilan pada tanggal {tanggal_aktif.strftime("%d/%m/%Y")}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Panggilan ({label_waktu})</div></div>', unsafe_allow_html=True)
         with c2:
             st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Nomor unik dihubungi</div></div>', unsafe_allow_html=True)
         with c3:
@@ -149,13 +158,13 @@ if uploaded_file is not None:
         st.markdown("<br>", unsafe_allow_html=True)
         
         # 5. TABEL DAFTAR PANGGILAN
-        st.subheader(f"📋 Daftar Panggilan Tanggal {tanggal_aktif.strftime('%d %B %Y')}")
+        st.subheader(f"📋 Daftar Panggilan ({label_waktu})")
         if total_keseluruhan > 0:
             df_tampil = df_terfilter.copy()
             df_tampil[kolom_waktu] = df_tampil[kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
             st.dataframe(df_tampil, use_container_width=True)
         else:
-            st.info("ℹ]. Tidak ada data aktivitas log untuk tanggal tersebut.")
+            st.info(f"ℹ️ Tidak ada data aktivitas log untuk periode {label_waktu}.")
             
     except Exception as e:
         st.error(f"Gagal memproses berkas log CSV. Error: {e}")
@@ -167,4 +176,4 @@ else:
                                       ["val-putih", "val-putih", "val-hijau", "val-merah"]):
         with col:
             st.markdown(f'<div class="metric-box"><div class="metric-label">{label}</div><div class="metric-value {color}">0</div><div class="metric-desc">{desc}</div></div>', unsafe_allow_html=True)
-    st.info("👋 Silakan klik tombol unggah berkas di atas untuk memproses data log CSV Anda.")
+    st.info("👋 Silakan klik tombol unggah berkas di kanan atas untuk memproses data log CSV Anda.")
