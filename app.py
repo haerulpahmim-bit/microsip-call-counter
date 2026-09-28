@@ -41,12 +41,17 @@ if uploaded_file is not None:
         df.columns = df.columns.str.strip()
         
         # --- 1. Proses Deteksi & Filter Tanggal ---
-        kolom_waktu = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
-        if not kolom_waktu and len(df.columns) > 0:
-            kolom_waktu = [df.columns]
+        # Mencari nama kolom waktu berupa teks tunggal
+        list_kolom_waktu = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
+        
+        nama_kolom_waktu = None
+        if list_kolom_waktu:
+            nama_kolom_waktu = list_kolom_waktu[0] # Ambil string kolom pertama yang cocok
+        elif len(df.columns) > 0:
+            nama_kolom_waktu = df.columns[0] # Jika tak terdeteksi, paksa pakai nama kolom pertama
             
-        if kolom_waktu:
-            nama_kolom_waktu = kolom_waktu
+        if nama_kolom_waktu:
+            # PERBAIKAN: Mengonversi data kolom tunggal (Series), bukan DataFrame list
             df[nama_kolom_waktu] = pd.to_datetime(df[nama_kolom_waktu], errors='coerce')
             
             # Sidebar Filter
@@ -70,14 +75,14 @@ if uploaded_file is not None:
         st.subheader("📈 Key Performance Indicators (KPI)")
         total_panggilan = len(df)
         
-        # Cari kolom durasi untuk perhitungan matematika sebelum diubah ke string
-        kolom_durasi = [col for col in df.columns if 'dur' in col.lower()]
+        # Cari kolom durasi berupa teks tunggal
+        list_kolom_durasi = [col for col in df.columns if 'dur' in col.lower()]
+        nama_kolom_durasi = list_kolom_durasi[0] if list_kolom_durasi else None
+        
         total_durasi_detik = 0
         avg_durasi_detik = 0
         
-        if kolom_durasi:
-            nama_kolom_durasi = kolom_durasi
-            # Pastikan tipe data numerik
+        if nama_kolom_durasi:
             df[nama_kolom_durasi] = pd.to_numeric(df[nama_kolom_durasi], errors='coerce').fillna(0)
             total_durasi_detik = df[nama_kolom_durasi].sum()
             if total_panggilan > 0:
@@ -98,11 +103,12 @@ if uploaded_file is not None:
             graph_col1, graph_col2 = st.columns(2)
             
             # Grafik 1: Distribusi Status/Tipe Panggilan
-            kolom_status = [col for col in df.columns if 'status' in col.lower() or 'type' in col.lower() or 'dir' in col.lower()]
+            list_kolom_status = [col for col in df.columns if 'status' in col.lower() or 'type' in col.lower() or 'dir' in col.lower()]
             with graph_col1:
                 st.subheader("Status Panggilan")
-                if kolom_status:
-                    ringkasan = df[kolom_status].value_counts()
+                if list_kolom_status:
+                    nama_kolom_status = list_kolom_status[0]
+                    ringkasan = df[nama_kolom_status].value_counts()
                     st.bar_chart(ringkasan)
                 else:
                     st.info("Kolom status tidak terdeteksi.")
@@ -110,7 +116,7 @@ if uploaded_file is not None:
             # Grafik 2: Tren Panggilan per Jam (Peak Hours)
             with graph_col2:
                 st.subheader("Tren Aktivitas Panggilan per Jam")
-                if kolom_waktu:
+                if nama_kolom_waktu:
                     # Ambil komponen jam dari data waktu
                     df['Jam'] = df[nama_kolom_waktu].dt.hour
                     tren_jam = df['Jam'].value_counts().sort_index()
@@ -124,11 +130,11 @@ if uploaded_file is not None:
         
         # Konversi tampilan durasi ke format MM:SS khusus di tabel
         df_display = df.copy()
-        if kolom_durasi:
+        if nama_kolom_durasi:
             df_display[nama_kolom_durasi] = df_display[nama_kolom_durasi].apply(format_durasi)
             
         # Format tampilan kolom waktu agar lebih cantik
-        if kolom_waktu:
+        if nama_kolom_waktu:
             df_display[nama_kolom_waktu] = df_display[nama_kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
 
         search_query = st.text_input("Cari nomor atau kontak tertentu:")
