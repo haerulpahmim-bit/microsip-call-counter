@@ -94,22 +94,32 @@ if uploaded_file is not None:
         if not kolom_status:
             kolom_status = df.columns[3] if len(df.columns) > 3 else df.columns[0]
 
-        # Konversi kolom waktu ke datetime
-        df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
-        df = df.dropna(subset=[kolom_waktu])
+        # Ambil tanggal hari kerja saat ini di dunia nyata (28/09/2026)
+        hari_ini_realtime = datetime.now()
+        hari_ini_str = hari_ini_realtime.strftime('%Y-%m-%d')
+        hari_ini_tampil = hari_ini_realtime.strftime('%d/%m/%Y')
         
-        # --- LOGIKA PENYARINGAN CERDAS DENGAN FALLBACK HARI KERJA TERAKHIR ---
+        # --- LOGIKA PENYARINGAN BERDASARKAN OPSI PILIHAN USER ---
         if opsi_tampilan == "Panggilan Hari Ini Saja":
-            hari_ini_realtime = datetime.now().strftime('%Y-%m-%d')
-            df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == hari_ini_realtime].copy()
-            label_waktu = f"Hari Ini ({datetime.now().strftime('%d/%m/%Y')})"
+            label_waktu = f"Hari Ini ({hari_ini_tampil})"
             
-            # FITUR AMAN: Jika hari ini kosong, ambil tanggal terbaru dari file log Anda
-            if len(df_terfilter) == 0 and not df.empty:
-                tanggal_terakhir_log = df[kolom_waktu].max().date()
-                df_terfilter = df[df[kolom_waktu].dt.date == tanggal_terakhir_log].copy()
-                label_waktu = f"Hari Kerja Terakhir ({tanggal_terakhir_log.strftime('%d/%m/%Y')})"
-                st.warning(f"ℹ️ Belum ada panggilan baru untuk hari ini. Menampilkan data aktivitas kerja terakhir pada tanggal **{tanggal_terakhir_log.strftime('%d %B %Y')}**.")
+            # Ubah data kolom waktu menjadi format teks string biasa agar pencocokan teks lebih aman
+            df_waktu_str = df[kolom_waktu].astype(str)
+            
+            # Saring baris data yang mengandung teks tanggal hari ini (2026-09-28 atau 28/09/2026 atau 28-09-2026)
+            filter_hari_ini = (
+                df_waktu_str.str.contains(hari_ini_str, na=False) | 
+                df_waktu_str.str.contains(hari_ini_tampil, na=False) |
+                df_waktu_str.str.contains(hari_ini_realtime.strftime('%d-%m-%Y'), na=False)
+            )
+            df_terfilter = df[filter_hari_ini].copy()
+            
+            # Jika di dalam file CSV Anda memang belum ada baris tanggal hari ini, 
+            # paksa sistem mengambil seluruh isi file agar data Anda tetap keluar dan tidak memunculkan 0
+            if len(df_terfilter) == 0:
+                df_terfilter = df.copy()
+                label_waktu = f"Hari Ini ({hari_ini_tampil}) - Menampilkan Semua Data"
+                st.info(f"💡 **Informasi:** Log panggilan untuk tanggal khusus hari ini ({hari_ini_tampil}) tidak ditemukan di file CSV. Sistem otomatis menampilkan seluruh isi riwayat file Anda.")
         else:
             df_terfilter = df.copy()
             label_waktu = "Semua Riwayat Log"
@@ -146,7 +156,7 @@ if uploaded_file is not None:
         # 4. TAMPILAN DASHBOARD METRIK
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">{label_waktu}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Panggilan ({label_waktu})</div></div>', unsafe_allow_html=True)
         with c2:
             st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Nomor unik dihubungi</div></div>', unsafe_allow_html=True)
         with c3:
@@ -159,9 +169,7 @@ if uploaded_file is not None:
         # 5. TABEL DAFTAR PANGGILAN
         st.subheader(f"📋 Daftar Panggilan ({label_waktu})")
         if total_keseluruhan > 0:
-            df_tampil = df_terfilter.copy()
-            df_tampil[kolom_waktu] = df_tampil[kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
-            st.dataframe(df_tampil, use_container_width=True)
+            st.dataframe(df_terfilter, use_container_width=True)
         else:
             st.info(f"ℹ️ Tidak ada data aktivitas log untuk periode {label_waktu}.")
             
