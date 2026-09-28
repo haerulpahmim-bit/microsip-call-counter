@@ -29,8 +29,8 @@ st.markdown("""
 st.markdown('<div class="main-title">Log MicroSIP</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Sistem otomatis menghitung performa berdasarkan file log microsip-call-log.csv.</div>', unsafe_allow_html=True)
 
-# Layout Atas
-col_blank, col_date, col_upload = st.columns([2, 1, 1])
+# Layout Atas pembagian tombol
+col_blank, col_date, col_upload = st.columns([1, 1, 2])
 
 with col_date:
     hari_ini_realtime = datetime.now().date()
@@ -42,35 +42,54 @@ with col_upload:
 
 st.markdown("---")
 
-# 3. PROSES DATA CSV
+# 3. PROSES PENGOLAHAN FILE CSV DENGAN LOGIKA DETEKSI JITU
 if uploaded_file is not None:
     try:
-        try:
-            df = pd.read_csv(uploaded_file, sep=',')
-        except:
-            df = pd.read_csv(uploaded_file, sep=';')
+        # PINTU 1: Deteksi otomatis separator pembagi isi file CSV Anda
+        # Membaca 2 baris awal untuk melihat apakah isinya dipisah tanda titik koma (;) atau koma (,)
+        sample_bytes = uploaded_file.read(1024)
+        sample_str = sample_bytes.decode('utf-8', errors='ignore')
+        uploaded_file.seek(0) # Kembalikan posisi pembacaan ke awal file
+        
+        sep_terpilih = ','
+        if ';' in sample_str and sample_str.count(';') > sample_str.count(','):
+            sep_terpilih = ';'
+        elif '\t' in sample_str:
+            sep_terpilih = '\t'
             
+        # PINTU 2: Memuat file ke database pandas menggunakan separator hasil deteksi
+        df = pd.read_csv(uploaded_file, sep=sep_terpilih)
+        
+        # Bersihkan spasi kosong dan ubah nama judul baris kolom menjadi HURUF BESAR
         df.columns = df.columns.str.strip().str.upper()
         
-        kolom_waktu = next((col for col in ['WAKTU', 'TANGGAL', 'TIME', 'DATE', 'TIMESTAMP'] if col in df.columns), df.columns[0])
-        kolom_nomor = next((col for col in ['NOMOR TUJUAN', 'NOMOR', 'NUMBER', 'PHONE', 'DESTINATION', 'DST'] if col in df.columns), df.columns[1] if len(df.columns) > 1 else df.columns[0])
-        kolom_durasi = next((col for col in ['DURASI', 'DURATION', 'BILLSEC', 'SEC'] if col in df.columns), df.columns[2] if len(df.columns) > 2 else df.columns[0])
-        kolom_status = next((col for col in ['STATUS', 'DISPOSITION', 'HASIL', 'TYPE'] if col in df.columns), df.columns[3] if len(df.columns) > 3 else df.columns[0])
+        # PINTU 3: Pemetaan nama kolom cadangan agar tidak bergantung 1 nama mutlak
+        kolom_waktu = next((col for col in ['WAKTU', 'TANGGAL', 'TIME', 'DATE', 'TIMESTAMP', 'START_TIME'] if col in df.columns), df.columns[0])
+        kolom_nomor = next((col for col in ['NOMOR TUJUAN', 'NOMOR', 'NUMBER', 'PHONE', 'DESTINATION', 'DST', 'CALLEE'] if col in df.columns), df.columns[1] if len(df.columns) > 1 else df.columns[0])
+        kolom_durasi = next((col for col in ['DURASI', 'DURATION', 'BILLSEC', 'SEC', 'DURATION_SEC'] if col in df.columns), df.columns[2] if len(df.columns) > 2 else df.columns[0])
+        kolom_status = next((col for col in ['STATUS', 'DISPOSITION', 'HASIL', 'TYPE', 'STATE'] if col in df.columns), df.columns[3] if len(df.columns) > 3 else df.columns[0])
 
+        # PINTU 4: Konversi waktu pintar dan proteksi data agar tidak hilang/NaN
         df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
-        df = df.dropna(subset=[kolom_waktu])
         
-        # --- INFO SEKILAS TOTAL KESELURUHAN FILE ---
-        total_baris_file = len(df)
-        st.info(f"📁 **Informasi File:** Berhasil membaca total **{total_baris_file} Panggilan** dari seluruh riwayat di dalam file CSV.")
+        # Jika konversi tanggal gagal total karena format aneh, gunakan tanggal hari ini sebagai fallback agar data tidak hilang
+        df[kolom_waktu] = df[kolom_waktu].fillna(pd.Timestamp(datetime.now().date()))
         
-        # Saring data khusus untuk tanggal yang dipilih di kalender (Hari Ini)
+        # --- CARA CEK JUMLAH PANGGILAN HARI INI SECARA LANGSUNG ---
+        # Saring data yang harinya cocok dengan pilihan kalender halaman utama
         df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == tanggal_str].copy()
         
+        # JIKA FILTER TANGGAL HARI INI TERNYATA KOSONG, KITA AMBIL SELURUH DATA DALAM FILE AGAR TETAP KELUAR TAMPILANNYA
+        apakah_kosong_hari_ini = False
+        if len(df_terfilter) == 0:
+            df_terfilter = df.copy()
+            apakah_kosong_hari_ini = True
+            
         total_keseluruhan = len(df_terfilter)
         total_unique = df_terfilter[kolom_nomor].nunique() if total_keseluruhan > 0 else 0
         
-        if total_keseluruhan > 0 and df_terfilter[kolom_durasi].dtype == object:
+        # Pembersihan teks durasi (hilangkan huruf 's' jika ada, contoh: '45s' menjadi 45)
+        if df_terfilter[kolom_durasi].dtype == object:
             df_terfilter['DURASI_BERSIH'] = df_terfilter[kolom_durasi].astype(str).str.replace('s', '', case=False).str.strip()
             durasi_detik = pd.to_numeric(df_terfilter['DURASI_BERSIH'], errors='coerce').fillna(0)
         else:
@@ -78,6 +97,7 @@ if uploaded_file is not None:
             
         status_teks = df_terfilter[kolom_status].astype(str).str.lower()
         
+        # Pembagian logic sukses / gagal terhubung
         terhubung = len(df_terfilter[(durasi_detik > 5) & (~status_teks.str.contains('unavailable|failed|busy|no answer|gagal', na=False))])
         gagal = total_keseluruhan - terhubung
         
@@ -96,12 +116,12 @@ if uploaded_file is not None:
         if total_keseluruhan > 0:
             df_terfilter['HASIL ANALISIS'] = df_terfilter.apply(tentukan_hasil, axis=1)
 
-        # 4. DASHBOARD METRIK
+        # 4. CETAK TAMPILAN KOTAK METRIK
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Hari Ini</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Seluruh panggilan tanggal {tanggal_str}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Keseluruhan</div><div class="metric-value val-putih">{total_keseluruhan}</div><div class="metric-desc">Seluruh riwayat panggilan dimuat</div></div>', unsafe_allow_html=True)
         with c2:
-            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Jumlah nomor unik hari ini</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-box"><div class="metric-label">Total Satuan (Unique)</div><div class="metric-value val-putih">{total_unique}</div><div class="metric-desc">Jumlah nomor unik terdata</div></div>', unsafe_allow_html=True)
         with c3:
             st.markdown(f'<div class="metric-box"><div class="metric-label">Terhubung (&gt;5s)</div><div class="metric-value val-hijau">{terhubung}</div><div class="metric-desc">Panggilan tersambung valid</div></div>', unsafe_allow_html=True)
         with c4:
@@ -109,25 +129,34 @@ if uploaded_file is not None:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # Beri notifikasi cerdas jika data yang keluar bukan tanggal hari ini
+        if apakah_kosong_hari_ini:
+            st.warning(f"ℹ️ **Info:** Tidak ada aktivitas log pada tanggal kalender ({tanggal_str}). Sistem otomatis menampilkan **Semua {total_keseluruhan} Baris Data Panggilan** yang ada di dalam file Anda.")
+        
         # 5. TABEL DAFTAR PANGGILAN
-        st.subheader(f"📋 Daftar Panggilan Tanggal {tanggal_str}")
-        if total_keseluruhan > 0:
-            df_tampil = df_terfilter.copy()
+        st.subheader("📋 Daftar Panggilan")
+        df_tampil = df_terfilter.copy()
+        
+        # Tampilkan format waktu string agar rapi dibaca manusia di tabel bawah
+        try:
             df_tampil[kolom_waktu] = df_tampil[kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
-            if 'DURASI_BERSIH' in df_tampil.columns:
-                df_tampil = df_tampil.drop(columns=['DURASI_BERSIH'])
-            st.dataframe(df_tampil, use_container_width=True)
-        else:
-            st.info(f"Tidak ada data aktivitas panggilan log pada tanggal {tanggal_str}. Coba ubah pilihan tanggal di atas ke hari pemanggilan dilakukan.")
+        except:
+            pass
+            
+        if 'DURASI_BERSIH' in df_tampil.columns:
+            df_tampil = df_tampil.drop(columns=['DURASI_BERSIH'])
+            
+        st.dataframe(df_tampil, use_container_width=True)
             
     except Exception as e:
         st.error(f"Gagal memproses berkas log CSV. Pastikan struktur kolom sudah sesuai. Error: {e}")
 else:
     c1, c2, c3, c4 = st.columns(4)
     for col, label, desc, color in zip([c1,c2,c3,c4], 
-                                      ["Total Hari Ini", "Total Satuan (Unique)", "Terhubung (>5s)", "Gagal (Unavailable)"],
-                                      ["Seluruh panggilan hari ini", "Jumlah nomor unik hari ini", "Panggilan tersambung valid", "Layanan tidak tersedia/Gagal"],
+                                      ["Total Keseluruhan", "Total Satuan (Unique)", "Terhubung (>5s)", "Gagal (Unavailable)"],
+                                      ["Seluruh percobaan panggilan", "Jumlah nomor unik hari ini", "Panggilan tersambung valid", "Layanan tidak tersedia/Gagal"],
                                       ["val-putih", "val-putih", "val-hijau", "val-merah"]):
         with col:
             st.markdown(f'<div class="metric-box"><div class="metric-label">{label}</div><div class="metric-value {color}">0</div><div class="metric-desc">{desc}</div></div>', unsafe_allow_html=True)
+            
     st.info("👋 Silakan klik tombol unggah berkas di kanan atas untuk memproses data log CSV Anda.")
