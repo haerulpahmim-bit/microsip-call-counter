@@ -40,18 +40,19 @@ if uploaded_file is not None:
         df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='utf-8')
         df.columns = df.columns.str.strip()
         
+        # Variabel untuk teks keterangan tanggal yang dipilih
+        keterangan_tanggal = "Semua Riwayat Data"
+        
         # --- 1. Proses Deteksi & Filter Tanggal ---
-        # Mencari nama kolom waktu berupa teks tunggal
         list_kolom_waktu = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
         
         nama_kolom_waktu = None
         if list_kolom_waktu:
-            nama_kolom_waktu = list_kolom_waktu[0] # Ambil string kolom pertama yang cocok
+            nama_kolom_waktu = list_kolom_waktu[0]
         elif len(df.columns) > 0:
-            nama_kolom_waktu = df.columns[0] # Jika tak terdeteksi, paksa pakai nama kolom pertama
+            nama_kolom_waktu = df.columns[0]
             
         if nama_kolom_waktu:
-            # PERBAIKAN: Mengonversi data kolom tunggal (Series), bukan DataFrame list
             df[nama_kolom_waktu] = pd.to_datetime(df[nama_kolom_waktu], errors='coerce')
             
             # Sidebar Filter
@@ -64,10 +65,12 @@ if uploaded_file is not None:
             hari_ini = datetime.today().date()
             if opsi_filter == "Khusus Hari Ini":
                 df = df[df[nama_kolom_waktu].dt.date == hari_ini]
+                keterangan_tanggal = f"Hari Ini ({hari_ini.strftime('%d-%m-%Y')})"
             elif opsi_filter == "Pilih Tanggal Kustom":
                 tgl_mulai = st.sidebar.date_input("Tanggal Mulai", hari_ini)
                 tgl_selesai = st.sidebar.date_input("Tanggal Selesai", hari_ini)
                 df = df[(df[nama_kolom_waktu].dt.date >= tgl_mulai) & (df[nama_kolom_waktu].dt.date <= tgl_selesai)]
+                keterangan_tanggal = f"Periode Kustom ({tgl_mulai.strftime('%d-%m-%Y')} s/d {tgl_selesai.strftime('%d-%m-%Y')})"
         
         st.success("Analisis data berhasil diperbarui!")
         
@@ -75,7 +78,6 @@ if uploaded_file is not None:
         st.subheader("📈 Key Performance Indicators (KPI)")
         total_panggilan = len(df)
         
-        # Cari kolom durasi berupa teks tunggal
         list_kolom_durasi = [col for col in df.columns if 'dur' in col.lower()]
         nama_kolom_durasi = list_kolom_durasi[0] if list_kolom_durasi else None
         
@@ -102,7 +104,6 @@ if uploaded_file is not None:
             st.markdown("---")
             graph_col1, graph_col2 = st.columns(2)
             
-            # Grafik 1: Distribusi Status/Tipe Panggilan
             list_kolom_status = [col for col in df.columns if 'status' in col.lower() or 'type' in col.lower() or 'dir' in col.lower()]
             with graph_col1:
                 st.subheader("Status Panggilan")
@@ -113,11 +114,9 @@ if uploaded_file is not None:
                 else:
                     st.info("Kolom status tidak terdeteksi.")
             
-            # Grafik 2: Tren Panggilan per Jam (Peak Hours)
             with graph_col2:
                 st.subheader("Tren Aktivitas Panggilan per Jam")
                 if nama_kolom_waktu:
-                    # Ambil komponen jam dari data waktu
                     df['Jam'] = df[nama_kolom_waktu].dt.hour
                     tren_jam = df['Jam'].value_counts().sort_index()
                     st.line_chart(tren_jam)
@@ -128,19 +127,24 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("🔍 Penjelajah Data Log")
         
+        # Input pencarian teks
+        search_query = st.text_input("Cari nomor atau kontak tertentu:")
+        
+        # --- PENEMPATAN INFORMASI JUMLAH PANGGALAN FILTER SESUAI PERMINTAAN ---
+        st.info(f"📋 **Jumlah Panggilan Terfilter ({keterangan_tanggal}):** {total_panggilan} Panggilan")
+        
         # Konversi tampilan durasi ke format MM:SS khusus di tabel
         df_display = df.copy()
         if nama_kolom_durasi:
             df_display[nama_kolom_durasi] = df_display[nama_kolom_durasi].apply(format_durasi)
             
-        # Format tampilan kolom waktu agar lebih cantik
         if nama_kolom_waktu:
             df_display[nama_kolom_waktu] = df_display[nama_kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
 
-        search_query = st.text_input("Cari nomor atau kontak tertentu:")
         if search_query:
             mask = df_display.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
             df_display = df_display[mask]
+            st.caption(f"Menampilkan hasil pencarian untuk kata kunci: '{search_query}' (Ditemukan {len(df_display)} data)")
             
         st.dataframe(df_display, use_container_width=True)
         
