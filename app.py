@@ -9,7 +9,6 @@ def hitung_panggilan_microsip(file_path):
 
     try:
         # Membaca file CSV dari MicroSIP
-        # MicroSIP biasanya menggunakan encoding UTF-8 atau UTF-16 dan separator tertentu
         df = pd.read_csv(file_path, sep=None, engine='python', encoding='utf-8')
         
         # Menampilkan 5 data pertama untuk verifikasi
@@ -23,13 +22,12 @@ def hitung_panggilan_microsip(file_path):
         print(f"\n=== HASIL ANALISIS LOG MICROSIP ===")
         print(f"Total Riwayat Panggilan: {total_panggilan}")
         
-        # Asumsi kolom status bernama 'Status' atau 'Type'
-        # Kita cari kolom yang berisi informasi status panggilan
+        # Mencari kolom yang berisi informasi status panggilan
         kolom_status = [col for col in df.columns if 'status' in col.lower() or 'type' in col.lower()]
         
         if kolom_status:
             nama_kolom = kolom_status[0]
-            print(\nDetail Berdasarkan {nama_kolom}:)
+            print(f"\nDetail Berdasarkan {nama_kolom}:")
             ringkasan = df[nama_kolom].value_counts()
             for status, jumlah in ringkasan.items():
                 print(f"- {status}: {jumlah} panggilan")
@@ -41,7 +39,6 @@ def hitung_panggilan_microsip(file_path):
         print(f"Terjadi kesalahan saat membaca file: {e}")
 
 # Tentukan lokasi file log MicroSIP Anda di sini
-# Contoh default Windows: r"C:\Users\NAMA_USER\AppData\Roaming\MicroSIP\Log.csv"
 jalur_file = "Log.csv" 
 
 hitung_panggilan_microsip(jalur_file)
