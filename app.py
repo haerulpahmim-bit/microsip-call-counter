@@ -4,7 +4,7 @@ from datetime import datetime
 
 # 1. KONFIGURASI HALAMAN & TEMA DARK MODE CUSTOM
 st.set_page_config(
-    page_title="Log MicroSIP",  # Mengubah judul pada tab browser
+    page_title="Log MicroSIP",  
     page_icon="📞",
     layout="wide", 
 )
@@ -57,15 +57,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. HEADER UTAMA (Sudah Diubah Menjadi Log MicroSIP)
+# 2. HEADER UTAMA
 st.markdown('<div class="main-title">Log MicroSIP</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Sistem otomatis menghitung performa berdasarkan file log microsip-call-log.csv.</div>', unsafe_allow_html=True)
 
-# Pengaturan Baris Filter Tanggal & Tombol Upload (Sejajar Atas)
-col_blank, col_date, col_upload = st.columns()
+# Memperbaiki fungsi st.columns dengan rasio pembagi area kolom (Kiri lebar, tengah tanggal, kanan unggah)
+col_blank, col_date, col_upload = st.columns([3, 1, 1])
 
 with col_date:
-    # Mengunci default ke tanggal hari ini di dunia nyata
     hari_ini_realtime = datetime.now().date()
     tanggal_pilihan = st.date_input("Pilih Tanggal Log:", hari_ini_realtime, label_visibility="collapsed")
     tanggal_str = tanggal_pilihan.strftime('%Y-%m-%d')
@@ -78,7 +77,6 @@ st.markdown("---")
 # 3. PROSES MEMBACA DAN MEMPROSES FILE CSV
 if uploaded_file is not None:
     try:
-        # Pembacaan CSV Fleksibel
         try:
             df = pd.read_csv(uploaded_file, sep=',')
         except:
@@ -86,26 +84,20 @@ if uploaded_file is not None:
             
         df.columns = df.columns.str.strip().str.upper()
         
-        # Pemetaan nama kolom
-        kolom_waktu = next((col for col in ['WAKTU', 'TANGGAL', 'TIME', 'DATE', 'TIMESTAMP'] if col in df.columns), df.columns)
-        kolom_nomor = next((col for col in ['NOMOR TUJUAN', 'NOMOR', 'NUMBER', 'PHONE', 'DESTINATION', 'DST'] if col in df.columns), df.columns if len(df.columns) > 1 else df.columns)
-        kolom_durasi = next((col for col in ['DURASI', 'DURATION', 'BILLSEC', 'SEC'] if col in df.columns), df.columns if len(df.columns) > 2 else df.columns)
-        kolom_status = next((col for col in ['STATUS', 'DISPOSITION', 'HASIL', 'TYPE'] if col in df.columns), df.columns if len(df.columns) > 3 else df.columns)
+        kolom_waktu = next((col for col in ['WAKTU', 'TANGGAL', 'TIME', 'DATE', 'TIMESTAMP'] if col in df.columns), df.columns[0])
+        kolom_nomor = next((col for col in ['NOMOR TUJUAN', 'NOMOR', 'NUMBER', 'PHONE', 'DESTINATION', 'DST'] if col in df.columns), df.columns[1] if len(df.columns) > 1 else df.columns[0])
+        kolom_durasi = next((col for col in ['DURASI', 'DURATION', 'BILLSEC', 'SEC'] if col in df.columns), df.columns[2] if len(df.columns) > 2 else df.columns[0])
+        kolom_status = next((col for col in ['STATUS', 'DISPOSITION', 'HASIL', 'TYPE'] if col in df.columns), df.columns[3] if len(df.columns) > 3 else df.columns[0])
 
-        # Paksa konversi kolom waktu ke datetime
         df[kolom_waktu] = pd.to_datetime(df[kolom_waktu], errors='coerce', dayfirst=True)
-        
-        # Bersihkan data baris yang waktunya tidak valid
         df = df.dropna(subset=[kolom_waktu])
         
-        # Saring data yang HANYA sesuai dengan tanggal hari ini yang dipilih kalender
         df_terfilter = df[df[kolom_waktu].dt.strftime('%Y-%m-%d') == tanggal_str].copy()
         
         total_keseluruhan = len(df_terfilter)
         total_unique = df_terfilter[kolom_nomor].nunique() if total_keseluruhan > 0 else 0
         
-        # Pembersihan karakter durasi string
-        if df_terfilter[kolom_durasi].dtype == object:
+        if total_keseluruhan > 0 and df_terfilter[kolom_durasi].dtype == object:
             df_terfilter['DURASI_BERSIH'] = df_terfilter[kolom_durasi].astype(str).str.replace('s', '', case=False).str.strip()
             durasi_detik = pd.to_numeric(df_terfilter['DURASI_BERSIH'], errors='coerce').fillna(0)
         else:
@@ -113,11 +105,9 @@ if uploaded_file is not None:
             
         status_teks = df_terfilter[kolom_status].astype(str).str.lower()
         
-        # Perhitungan Terhubung dan Gagal sesuai indikator dasbor
         terhubung = len(df_terfilter[(durasi_detik > 5) & (~status_teks.str.contains('unavailable|failed|busy|no answer|gagal', na=False))])
         gagal = total_keseluruhan - terhubung
         
-        # Membuat logika kolom baru HASIL ANALISIS
         def tentukan_hasil(row):
             try:
                 dur_str = str(row[kolom_durasi]).lower().replace('s', '').strip()
@@ -160,7 +150,6 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Gagal memproses berkas log CSV. Pastikan struktur kolom sudah sesuai. Error: {e}")
 else:
-    # Kondisi awal dasbor sebelum diupload berkas apa pun (Nilai 0)
     c1, c2, c3, c4 = st.columns(4)
     for col, label, desc, color in zip([c1,c2,c3,c4], 
                                       ["Total Keseluruhan", "Total Satuan (Unique)", "Terhubung (>5s)", "Gagal (Unavailable)"],
