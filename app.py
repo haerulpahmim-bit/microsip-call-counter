@@ -42,9 +42,9 @@ if uploaded_file is not None:
         
         nama_kolom_waktu = None
         if list_kolom_waktu:
-            nama_kolom_waktu = list_kolom_waktu[0]
+            nama_kolom_waktu = list_kolom_waktu
         elif len(df.columns) > 0:
-            nama_kolom_waktu = df.columns[0]
+            nama_kolom_waktu = df.columns
             
         if nama_kolom_waktu:
             df[nama_kolom_waktu] = pd.to_datetime(df[nama_kolom_waktu], errors='coerce')
@@ -68,7 +68,7 @@ if uploaded_file is not None:
         total_panggilan = len(df)
         
         list_kolom_durasi = [col for col in df.columns if 'dur' in col.lower()]
-        nama_kolom_durasi = list_kolom_durasi[0] if list_kolom_durasi else None
+        nama_kolom_durasi = list_kolom_durasi if list_kolom_durasi else None
         
         total_durasi_detik = 0
         avg_durasi_detik = 0
@@ -96,7 +96,7 @@ if uploaded_file is not None:
             with graph_col1:
                 st.subheader("Status Panggilan")
                 if list_kolom_status:
-                    nama_kolom_status = list_kolom_status[0]
+                    nama_kolom_status = list_kolom_status
                     ringkasan = df[nama_kolom_status].value_counts()
                     st.bar_chart(ringkasan)
                     ringkasan_status_teks = str(ringkasan.to_dict())
@@ -113,7 +113,7 @@ if uploaded_file is not None:
                 else:
                     st.info("Kolom waktu tidak valid.")
 
-        # --- 4. INTEGRASI AI AGENT (GEMINI HACKTIV8 VERSION) ---
+        # --- 4. INTEGRASI AI AGENT (DENGAN STRATEGI FALLBACK CADANGAN) ---
         st.markdown("---")
         st.subheader("🤖 AI Data Analyst Consultant")
         
@@ -122,37 +122,49 @@ if uploaded_file is not None:
             
             if st.button("🪄 Jalankan AI Agent Audit"):
                 with st.spinner("AI Agent sedang menganalisis data log Anda..."):
+                    
+                    prompt_konteks = f"""
+                    Anda adalah seorang AI Data Analyst Consultant profesional untuk operasional Call Center & Telemarketing perusahaan.
+                    Tugas Anda adalah mengaudit data statistik panggilan MicroSIP berikut:
+                    
+                    - Periode Analisis: {keterangan_tanggal}
+                    - Total Volume Panggilan: {total_panggilan} panggilan
+                    - Total Waktu Bicara: {detik_ke_teks(total_durasi_detik)}
+                    - Rata-rata Durasi per Panggilan: {format_durasi(avg_durasi_detik)}
+                    - Distribusi Status Panggilan: {ringkasan_status_teks}
+                    - Tren Panggilan per Jam (Format Jam: Jumlah): {tren_jam_teks}
+                    
+                    Berikan analisis ringkas, tajam, dan profesional yang mencakup:
+                    1. **Evaluasi Performa**: Apakah volume dan durasi panggilan hari ini sudah ideal/produktif?
+                    2. **Analisis Jam Sibuk**: Insight tentang kapan traffic tertinggi terjadi dan rekomendasi alokasi agen.
+                    3. **Rekomendasi Bisnis**: Tindakan nyata apa yang harus dilakukan manajemen untuk meningkatkan penjualan/layanan berdasarkan data ini.
+                    
+                    Jawab dalam Bahasa Indonesia yang profesional dan gunakan poin-poin markdown yang rapi.
+                    """
+                    
+                    # Mencoba Model Utama (Gemini 3.8 Flash)
                     try:
                         client = genai.Client(api_key=api_key)
-                        
-                        prompt_konteks = f"""
-                        Anda adalah seorang AI Data Analyst Consultant profesional untuk operasional Call Center & Telemarketing perusahaan.
-                        Tugas Anda adalah mengaudit data statistik panggilan MicroSIP berikut:
-                        
-                        - Periode Analisis: {keterangan_tanggal}
-                        - Total Volume Panggilan: {total_panggilan} panggilan
-                        - Total Waktu Bicara: {detik_ke_teks(total_durasi_detik)}
-                        - Rata-rata Durasi per Panggilan: {format_durasi(avg_durasi_detik)}
-                        - Distribusi Status Panggilan: {ringkasan_status_teks}
-                        - Tren Panggilan per Jam (Format Jam: Jumlah): {tren_jam_teks}
-                        
-                        Berikan analisis ringkas, tajam, dan profesional yang mencakup:
-                        1. **Evaluasi Performa**: Apakah volume dan durasi panggilan hari ini sudah ideal/produktif?
-                        2. **Analisis Jam Sibuk**: Insight tentang kapan traffic tertinggi terjadi dan rekomendasi alokasi agen.
-                        3. **Rekomendasi Bisnis**: Tindakan nyata apa yang harus dilakukan manajemen untuk meningkatkan penjualan/layanan berdasarkan data ini.
-                        
-                        Jawab dalam Bahasa Indonesia yang profesional dan gunakan poin-poin markdown yang rapi.
-                        """
-                        
-                        # PERBAIKAN: Menggunakan model terbaru gemini-3.8-flash sesuai instruksi sistem Google
                         response = client.models.generate_content(
                             model='gemini-3.8-flash',
                             contents=prompt_konteks,
                         )
                         st.markdown(response.text)
-                        
-                    except Exception as ai_err:
-                        st.error(f"AI Agent gagal merespon. Error: {ai_err}")
+                    
+                    except Exception as err_utama:
+                        # Jika model utama sibuk (503), otomatis pindah ke model alternatif (Gemini 2.0 Flash)
+                        if "503" in str(err_utama) or "UNAVAILABLE" in str(err_utama):
+                            st.caption("ℹ️ Model utama sibuk, mengalihkan otomatis ke saluran cadangan AI...")
+                            try:
+                                response = client.models.generate_content(
+                                    model='gemini-2.0-flash',
+                                    contents=prompt_konteks,
+                                )
+                                st.markdown(response.text)
+                            except Exception as err_cadangan:
+                                st.error("⚠️ Semua server AI Google saat ini sedang mengalami lonjakan permintaan yang sangat tinggi (High Demand). Silakan klik kembali tombol audit beberapa saat lagi.")
+                        else:
+                            st.error(f"AI Agent gagal merespon. Error: {err_utama}")
         else:
             st.warning("⚠️ Kunci API Gemini (`GEMINI_API_KEY`) belum dikonfigurasi di Streamlit Secrets. Fitur AI Agent dinonaktifkan.")
 
