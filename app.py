@@ -20,7 +20,7 @@ if uploaded_file is not None:
         df.columns = df.columns.str.strip()
         
         # --- Proses Deteksi & Filter Tanggal ---
-        # Mencari kolom yang berisi informasi waktu/tanggal (biasanya kolom pertama atau mengandung kata 'date'/'time')
+        # Mencari kolom yang berisi informasi waktu/tanggal
         kolom_waktu = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
         if not kolom_waktu and len(df.columns) > 0:
             kolom_waktu = [df.columns[0]]  # Mengambil kolom pertama jika tidak terdeteksi otomatis
@@ -30,7 +30,7 @@ if uploaded_file is not None:
             # Mengubah data ke format datetime secara fleksibel
             df[nama_kolom_waktu] = pd.to_datetime(df[nama_kolom_waktu], errors='coerce')
             
-            # Buat filter di Sidebar agar tampilan utama tetap rapi
+            # Buat filter di Sidebar
             st.sidebar.header("📅 Filter Waktu")
             opsi_filter = st.sidebar.radio(
                 "Pilih Rentang Analisis:",
@@ -41,7 +41,7 @@ if uploaded_file is not None:
             
             if opsi_filter == "Khusus Hari Ini":
                 df = df[df[nama_kolom_waktu].dt.date == hari_ini]
-            elif opsi_filter == "Pustom Tanggal Kustom":
+            elif opsi_filter == "Pilih Tanggal Kustom":
                 tgl_mulai = st.sidebar.date_input("Tanggal Mulai", hari_ini)
                 tgl_selesai = st.sidebar.date_input("Tanggal Selesai", hari_ini)
                 df = df[(df[nama_kolom_waktu].dt.date >= tgl_mulai) & (df[nama_kolom_waktu].dt.date <= tgl_selesai)]
@@ -55,33 +55,38 @@ if uploaded_file is not None:
         total_panggilan = len(df)
         st.metric(label="Total Panggilan Terhitung", value=f"{total_panggilan} Panggilan")
         
-        # Mencari kolom status secara otomatis (misal: 'Status', 'Type', 'Direction')
-        kolom_status = [col for col in df.columns if 'status' in col.lower() or 'type' in col.lower() or 'dir' in col.lower()]
-        
-        if kolom_status:
-            nama_kolom = kolom_status[0]
+        if total_panggilan > 0:
+            # Mencari kolom status secara otomatis (misal: 'Status', 'Type', 'Direction')
+            kolom_status = [col for col in df.columns if 'status' in col.lower() or 'type' in col.lower() or 'dir' in col.lower()]
             
-            # Hitung pembagian status
-            ringkasan = df[nama_kolom].value_counts()
-            
-            # Tampilkan statistik dalam kolom yang rapi
-            cols = st.columns(len(ringkasan))
-            for idx, (status, jumlah) in enumerate(ringkasan.items()):
-                with cols[idx]:
-                    st.metric(label=f"Status: {status}", value=jumlah)
-            
-            # Tampilkan Grafik Batang Interaktif
-            st.subheader("📈 Grafik Tren Status Panggilan")
-            st.bar_chart(ringkasan)
-            
+            if kolom_status:
+                nama_kolom = kolom_status[0]
+                
+                # Hitung pembagian status
+                ringkasan = df[nama_kolom].value_counts()
+                
+                # VALIDASI AMAN: Pastikan jumlah kolom minimal 1 agar st.columns tidak error
+                jumlah_kolom = len(ringkasan)
+                if jumlah_kolom > 0:
+                    cols = st.columns(jumlah_kolom)
+                    for idx, (status, jumlah) in enumerate(ringkasan.items()):
+                        with cols[idx]:
+                            st.metric(label=f"Status: {status}", value=jumlah)
+                    
+                    # Tampilkan Grafik Batang Interaktif
+                    st.subheader("📈 Grafik Tren Status Panggilan")
+                    st.bar_chart(ringkasan)
+                else:
+                    st.info("Tidak ada data status untuk ditampilkan pada filter ini.")
+            else:
+                st.warning("⚠️ Kolom status panggilan tidak terdeteksi otomatis. Menampilkan data mentah di bawah.")
         else:
-            st.warning("⚠️ Kolom status panggilan tidak terdeteksi otomatis. Menampilkan data mentah di bawah.")
+            st.info("ℹ️ Belum ada data panggilan tercatat untuk rentang waktu/hari yang Anda pilih.")
 
         # --- Fitur Tambahan: Filter & Pencarian ---
         st.subheader("🔍 Cari & Filter Data")
         search_query = st.text_input("Cari berdasarkan Nomor Telepon atau Nama Kontak:")
         
-        # Jika user mengetik sesuatu, filter dataframe-nya
         if search_query:
             mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
             df_filtered = df[mask]
