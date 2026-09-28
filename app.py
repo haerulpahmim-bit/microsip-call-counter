@@ -39,7 +39,13 @@ if uploaded_file is not None:
         
         # --- 1. Proses Deteksi & Filter Tanggal ---
         list_kolom_waktu = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
-        nama_kolom_waktu = list_kolom_waktu if list_kolom_waktu else (df.columns if len(df.columns) > 0 else None)
+        
+        # PERBAIKAN UTAMA: Pastikan nama_kolom_waktu adalah STRING tunggal, bukan LIST
+        nama_kolom_waktu = None
+        if list_kolom_waktu:
+            nama_kolom_waktu = list_kolom_waktu[0] # Mengambil elemen teks pertama
+        elif len(df.columns) > 0:
+            nama_kolom_waktu = df.columns[0] # Mengambil nama kolom pertama jika tidak terdeteksi
             
         if nama_kolom_waktu:
             df[nama_kolom_waktu] = pd.to_datetime(df[nama_kolom_waktu], errors='coerce')
@@ -63,7 +69,7 @@ if uploaded_file is not None:
         total_panggilan = len(df)
         
         list_kolom_durasi = [col for col in df.columns if 'dur' in col.lower()]
-        nama_kolom_durasi = list_kolom_durasi if list_kolom_durasi else None
+        nama_kolom_durasi = list_kolom_durasi[0] if list_kolom_durasi else None # Ambil String Tunggal
         
         total_durasi_detik = 0
         avg_durasi_detik = 0
@@ -91,7 +97,8 @@ if uploaded_file is not None:
             with graph_col1:
                 st.subheader("Status Panggilan")
                 if list_kolom_status:
-                    ringkasan = df[list_kolom_status].value_counts()
+                    nama_kolom_status = list_kolom_status[0] # Ambil String Tunggal
+                    ringkasan = df[nama_kolom_status].value_counts()
                     st.bar_chart(ringkasan)
                     ringkasan_status_teks = str(ringkasan.to_dict())
                 else:
@@ -111,18 +118,14 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("🤖 AI Data Analyst Consultant")
         
-        # Mengambil API Key dari Streamlit Secrets
         if "GEMINI_API_KEY" in st.secrets:
             api_key = st.secrets["GEMINI_API_KEY"]
             
-            # Tombol pemicu AI Agent agar tidak memakan kuota API setiap reload
             if st.button("🪄 Jalankan AI Agent Audit"):
                 with st.spinner("AI Agent sedang menganalisis data log Anda..."):
                     try:
-                        # Inisialisasi Google GenAI Client versi terbaru
                         client = genai.Client(api_key=api_key)
                         
-                        # Menyusun prompt konteks data bisnis untuk AI
                         prompt_konteks = f"""
                         Anda adalah seorang AI Data Analyst Consultant profesional untuk operasional Call Center & Telemarketing perusahaan.
                         Tugas Anda adalah mengaudit data statistik panggilan MicroSIP berikut:
@@ -142,12 +145,10 @@ if uploaded_file is not None:
                         Jawab dalam Bahasa Indonesia yang profesional dan gunakan poin-poin markdown yang rapi.
                         """
                         
-                        # Memanggil Gemini 2.5 Flash yang cepat dan cerdas
                         response = client.models.generate_content(
                             model='gemini-2.5-flash',
                             contents=prompt_konteks,
                         )
-                        
                         st.markdown(response.text)
                         
                     except Exception as ai_err:
