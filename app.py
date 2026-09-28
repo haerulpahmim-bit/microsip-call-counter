@@ -40,7 +40,6 @@ if uploaded_file is not None:
         # --- 1. Proses Deteksi & Filter Tanggal ---
         list_kolom_waktu = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
         
-        # PERBAIKAN PERMANEN: Paksa mengambil elemen string pertama dari list hasil regex
         nama_kolom_waktu = None
         if list_kolom_waktu:
             nama_kolom_waktu = list_kolom_waktu[0]
@@ -143,7 +142,6 @@ if uploaded_file is not None:
                     Jawab dalam Bahasa Indonesia yang profesional dan gunakan poin-poin markdown yang rapi.
                     """
                     
-                    # Eksekusi dengan Model Utama
                     try:
                         client = genai.Client(api_key=api_key)
                         response = client.models.generate_content(
@@ -168,31 +166,33 @@ if uploaded_file is not None:
         else:
             st.warning("⚠️ Kunci API Gemini (`GEMINI_API_KEY`) belum dikonfigurasi di Streamlit Secrets. Fitur AI Agent dinonaktifkan.")
 
-        # --- 5. Tabel Data Explorer ---
+        # --- 5. Tabel Data Explorer (Pencarian & Penempatan Data Tepat di Bawah Kolom) ---
         st.markdown("---")
         st.subheader("🔍 Penjelajah Data Log")
-        search_query = st.text_input("Cari nomor atau kontak tertentu:")
-        st.info(f"📋 **Jumlah Panggilan Terfilter ({keterangan_tanggal}):** {total_panggilan} Panggilan")
         
+        # Kolom input pencarian text
+        search_query = st.text_input("Cari data (Ketik nomor, nama kontak, status, atau kata kunci lainnya):")
+        
+        # Siapkan DataFrame display
         df_display = df.copy()
         if nama_kolom_durasi: df_display[nama_kolom_durasi] = df_display[nama_kolom_durasi].apply(format_durasi)
         if nama_kolom_waktu: df_display[nama_kolom_waktu] = df_display[nama_kolom_waktu].dt.strftime('%Y-%m-%d %H:%M:%S')
 
+        # Logika pemotongan data secara dinamis berdasarkan input pencarian
         if search_query:
             mask = df_display.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
             df_display = df_display[mask]
+            st.info(f"📋 **Hasil Pencarian untuk '{search_query}' ({keterangan_tanggal}):** Ditemukan {len(df_display)} Panggilan")
+        else:
+            st.info(f"📋 **Jumlah Total Panggilan Terfilter ({keterangan_tanggal}):** {len(df_display)} Panggilan")
             
+        # Tabel data diletakkan tepat di bawah notifikasi informasi jumlah data
         st.dataframe(df_display, use_container_width=True)
         
+        # Tombol Download laporan ekspor data
         csv_data = df_display.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Unduh Laporan (.CSV)",
             data=csv_data,
             file_name=f"Laporan_MicroSIP_{datetime.now().strftime('%Y%m%d')}.csv",
             mime='text/csv',
-        )
-            
-    except Exception as e:
-        st.error(f"Gagal memproses file CSV. Error: {e}")
-else:
-    st.info("💡 Petunjuk: Silakan unggah file `Log.csv` dari folder data lokal aplikasi MicroSIP Anda untuk memulai.")
