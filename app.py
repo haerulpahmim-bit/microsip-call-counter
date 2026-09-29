@@ -98,7 +98,7 @@ if uploaded_file is not None:
             st.error("❌ Kolom 'Local Time' tidak ditemukan di dalam file CSV Anda.")
             st.stop()
 
-        st.success("Analisis data berbasis waktu lokal berhasil diperbarui!")
+        st.success("Analisis data berhasil diperbarui!")
 
         # --- 2. Perhitungan KPI Utama (Menggunakan Data Hari Ini) ---
         st.subheader(f"📈 Key Performance Indicators (KPI) — {keterangan_tanggal}")
@@ -119,13 +119,13 @@ if uploaded_file is not None:
             total_durasi_detik = df_hari_ini[nama_kolom_durasi].sum()
             avg_durasi_detik = df_hari_ini[nama_kolom_durasi].mean()
 
-        # Mengunci nama kolom Info ke 'Info' atau 'Type' sesuai file log MicroSIP Anda
+        # Mengunci nama kolom Info ke 'Info' sesuai file log MicroSIP Anda
         nama_kolom_status = "Info"
 
-        # Aturan koneksi: Durasi > 0 detik (Atau sesuaikan jika tetap ingin > 120 detik)
+        # Aturan koneksi baru: Durasi >= 90 detik (1 menit 30 detik)
         panggilan_terhubung = 0
         if nama_kolom_durasi in df_hari_ini.columns and total_panggilan > 0:
-            mask_terhubung = df_hari_ini[nama_kolom_durasi] > 0
+            mask_terhubung = df_hari_ini[nama_kolom_durasi] >= 90
             panggilan_terhubung = int(mask_terhubung.sum())
 
         persentase_terhubung = (
@@ -145,7 +145,7 @@ if uploaded_file is not None:
 
         with kpi2:
             st.metric(
-                label="🔗 Panggilan Terangkat (>0 Detik)",
+                label="🔗 Panggilan Terangkat (≥1:30)",
                 value=f"{panggilan_terhubung}",
                 delta=f"{persentase_terhubung:.1f}%"
             )
