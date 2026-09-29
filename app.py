@@ -1,6 +1,4 @@
-from pathlib import Path
-
-app_code = r'''import streamlit as st
+import streamlit as st
 import pandas as pd
 from datetime import datetime
 from google import genai
@@ -460,17 +458,3 @@ else:
         "dari folder data lokal aplikasi MicroSIP Anda "
         "untuk memulai."
     )
-'''
-
-path = Path("/mnt/data/app.py")
-path.write_text(app_code, encoding="utf-8")
-
-# requirements yang diperlukan untuk GitHub/Streamlit
-requirements = """streamlit
-pandas
-google-genai
-"""
-Path("/mnt/data/requirements.txt").write_text(requirements, encoding="utf-8")
-
-print(f"File siap: {path}")
-print("requirements.txt juga dibuat.")
