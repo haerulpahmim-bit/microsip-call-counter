@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Konfigurasi halaman utama
 st.set_page_config(
@@ -58,7 +58,7 @@ if uploaded_file is not None:
             encoding="utf-8",
             dtype=str
         )
-        # Menghapus spasi gaib pada nama kolom
+        # Menghapus spasi pada nama kolom
         df.columns = df.columns.str.strip()
 
         # SASARAN UTAMA: Mengunci target ke kolom 'Local Time' sesuai file log MicroSIP
@@ -71,15 +71,31 @@ if uploaded_file is not None:
                 errors="coerce"
             )
 
-            # Ambil tanggal hari ini berdasarkan jam lokal tempat aplikasi dijalankan
+            # --- FITUR BARU: MENU PILIHAN HARI DI SIDEBAR ---
+            st.sidebar.header("📅 Parameter Analisis")
+            pilihan_hari = st.sidebar.radio(
+                "Pilih Hari Analisis:",
+                ["Hari Ini", "1 Hari Lalu (Kemarin)"],
+                index=0
+            )
+
+            # Hitung tanggal berdasarkan waktu lokal saat ini
             hari_ini = datetime.now().date()
+            kemarin = hari_ini - timedelta(days=1)
 
-            # --- FILTER KPI HARI INI ---
-            df_hari_ini = df[df[nama_kolom_waktu].dt.date == hari_ini].copy()
-            keterangan_tanggal = f"Hari Ini ({hari_ini.strftime('%d-%m-%Y')})"
+            # Tentukan tanggal target berdasarkan input sidebar
+            if pilihan_hari == "Hari Ini":
+                tanggal_target = hari_ini
+                label_waktu = f"Hari Ini ({hari_ini.strftime('%d-%m-%Y')})"
+            else:
+                tanggal_target = kemarin
+                label_waktu = f"1 Hari Lalu ({kemarin.strftime('%d-%m-%Y')})"
 
-            # Jika data hari ini kosong, tampilkan peringatan tanggal terakhir yang ada di log
-            if df_hari_ini.empty and not df[nama_kolom_waktu].dropna().empty:
+            # --- FILTER DATA BERDASARKAN TANGGAL TARGET ---
+            df_terfilter = df[df[nama_kolom_waktu].dt.date == tanggal_target].copy()
+
+            # Jika data pada tanggal tersebut kosong, tampilkan info tanggal yang ada di log file
+            if df_terfilter.empty and not df[nama_kolom_waktu].dropna().empty:
                 tanggal_tersedia = (
                     df[nama_kolom_waktu]
                     .dropna()
@@ -90,7 +106,7 @@ if uploaded_file is not None:
                 )
                 st.warning(
                     f"⚠️ Tidak ada panggilan lokal pada tanggal "
-                    f"{hari_ini.strftime('%d-%m-%Y')}. "
+                    f"{tanggal_target.strftime('%d-%m-%Y')} ({pilihan_hari}). "
                     f"Beberapa tanggal terakhir yang tersedia di file Anda: "
                     f"{', '.join(d.strftime('%d-%m-%Y') for d in tanggal_tersedia.index)}"
                 )
@@ -98,34 +114,34 @@ if uploaded_file is not None:
             st.error("❌ Kolom 'Local Time' tidak ditemukan di dalam file CSV Anda.")
             st.stop()
 
-        st.success("Analisis data berhasil diperbarui!")
+        st.success(f"Analisis data untuk {label_waktu} berhasil diperbarui!")
 
-        # --- 2. Perhitungan KPI Utama (Menggunakan Data Hari Ini) ---
-        st.subheader(f"📈 Key Performance Indicators (KPI) — {keterangan_tanggal}")
+        # --- 2. Perhitungan KPI Utama (Menggunakan Data Terfilter) ---
+        st.subheader(f"📈 Key Performance Indicators (KPI) — {label_waktu}")
 
-        total_panggilan = len(df_hari_ini)
+        total_panggilan = len(df_terfilter)
 
         # Mengunci nama kolom Durasi ke 'Duration' sesuai file log MicroSIP Anda
         nama_kolom_durasi = "Duration"
         total_durasi_detik = 0
         avg_durasi_detik = 0
 
-        if nama_kolom_durasi in df_hari_ini.columns and total_panggilan > 0:
-            df_hari_ini[nama_kolom_durasi] = pd.to_numeric(
-                df_hari_ini[nama_kolom_durasi],
+        if nama_kolom_durasi in df_terfilter.columns and total_panggilan > 0:
+            df_terfilter[nama_kolom_durasi] = pd.to_numeric(
+                df_terfilter[nama_kolom_durasi],
                 errors="coerce"
             ).fillna(0)
 
-            total_durasi_detik = df_hari_ini[nama_kolom_durasi].sum()
-            avg_durasi_detik = df_hari_ini[nama_kolom_durasi].mean()
+            total_durasi_detik = df_terfilter[nama_kolom_durasi].sum()
+            avg_durasi_detik = df_terfilter[nama_kolom_durasi].mean()
 
         # Mengunci nama kolom Info ke 'Info' sesuai file log MicroSIP Anda
         nama_kolom_status = "Info"
 
-        # Aturan koneksi baru: Durasi >= 90 detik (1 menit 30 detik)
+        # Aturan koneksi: Durasi >= 90 detik (1 menit 30 detik)
         panggilan_terhubung = 0
-        if nama_kolom_durasi in df_hari_ini.columns and total_panggilan > 0:
-            mask_terhubung = df_hari_ini[nama_kolom_durasi] >= 90
+        if nama_kolom_durasi in df_terfilter.columns and total_panggilan > 0:
+            mask_terhubung = df_terfilter[nama_kolom_durasi] >= 90
             panggilan_terhubung = int(mask_terhubung.sum())
 
         persentase_terhubung = (
@@ -139,7 +155,7 @@ if uploaded_file is not None:
 
         with kpi1:
             st.metric(
-                label="📞 Total Panggilan Hari Ini",
+                label=f"📞 Total Panggilan ({pilihan_hari})",
                 value=f"{total_panggilan}"
             )
 
@@ -162,25 +178,25 @@ if uploaded_file is not None:
                 value=format_durasi(avg_durasi_detik)
             )
 
-        # --- 3. Visualisasi Grafik (Menggunakan Data Hari Ini) ---
+        # --- 3. Visualisasi Grafik (Menggunakan Data Terfilter) ---
         if total_panggilan > 0:
             st.markdown("---")
             graph_col1, graph_col2 = st.columns(2)
 
             with graph_col1:
-                st.subheader("📊 Status/Keterangan Panggilan")
-                if nama_kolom_status in df_hari_ini.columns:
-                    ringkasan = df_hari_ini[nama_kolom_status].value_counts()
+                st.subheader(f"📊 Status/Keterangan Panggilan ({pilihan_hari})")
+                if nama_kolom_status in df_terfilter.columns:
+                    ringkasan = df_terfilter[nama_kolom_status].value_counts()
                     st.bar_chart(ringkasan)
                 else:
                     st.info("Kolom status/info tidak terdeteksi.")
 
             with graph_col2:
-                st.subheader("📈 Tren Aktivitas Per Jam")
-                tren_jam = df_hari_ini[nama_kolom_waktu].dt.hour.value_counts().sort_index()
+                st.subheader(f"📈 Tren Aktivitas Per Jam ({pilihan_hari})")
+                tren_jam = df_terfilter[nama_kolom_waktu].dt.hour.value_counts().sort_index()
                 st.line_chart(tren_jam)
         else:
-            st.info("💡 Grafik tidak ditampilkan karena belum ada aktivitas panggilan untuk hari ini.")
+            st.info(f"💡 Grafik tidak ditampilkan karena belum ada aktivitas panggilan untuk tanggal tersebut.")
 
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memproses file: {e}")
