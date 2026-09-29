@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from google import genai
 
 # Konfigurasi halaman utama
@@ -90,15 +91,37 @@ if uploaded_file is not None:
                 index=0
             )
 
-            hari_ini = datetime.today().date()
+            hari_ini = datetime.now(ZoneInfo("Asia/Jakarta")).date()
 
             if opsi_filter == "Khusus Hari Ini":
+                tanggal_asli_sebelum_filter = df[nama_kolom_waktu].copy()
+
                 df = df[
                     df[nama_kolom_waktu].dt.date == hari_ini
                 ]
+
                 keterangan_tanggal = (
                     f"Hari Ini ({hari_ini.strftime('%d-%m-%Y')})"
                 )
+
+                # Jika tidak ada data hari ini, tampilkan informasi tanggal
+                # yang tersedia agar penyebabnya mudah diketahui.
+                if df.empty and not tanggal_asli_sebelum_filter.dropna().empty:
+                    tanggal_tersedia = (
+                        tanggal_asli_sebelum_filter
+                        .dropna()
+                        .dt.date
+                        .value_counts()
+                        .sort_index()
+                        .tail(5)
+                    )
+
+                    st.warning(
+                        f"⚠️ Tidak ada panggilan pada tanggal "
+                        f"{hari_ini.strftime('%d-%m-%Y')} (WIB). "
+                        f"Beberapa tanggal terakhir di file: "
+                        f"{', '.join(d.strftime('%d-%m-%Y') for d in tanggal_tersedia.index)}"
+                    )
 
             elif opsi_filter == "Pilih Tanggal Kustom":
                 tgl_mulai = st.sidebar.date_input(
