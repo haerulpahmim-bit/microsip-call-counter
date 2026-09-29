@@ -91,7 +91,10 @@ if uploaded_file is not None:
                 index=0
             )
 
-            hari_ini = datetime.now(ZoneInfo("Asia/Jakarta")).date()
+            # Gunakan tanggal berdasarkan waktu lokal Indonesia (WIB).
+            # Ini mengikuti waktu lokal server/Streamlit secara eksplisit ke Asia/Jakarta.
+            waktu_local = datetime.now(ZoneInfo("Asia/Jakarta"))
+            hari_ini = waktu_local.date()
 
             if opsi_filter == "Khusus Hari Ini":
                 tanggal_asli_sebelum_filter = df[nama_kolom_waktu].copy()
