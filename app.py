@@ -51,11 +51,13 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
     try:
+        # Membaca semua kolom sebagai teks (string) terlebih dahulu agar tidak berubah menjadi 1970
         df = pd.read_csv(
             uploaded_file,
             sep=None,
             engine="python",
-            encoding="utf-8"
+            encoding="utf-8",
+            dtype=str  # Ambil data lokal teks asli asli tanpa konversi timestamp otomatis
         )
         df.columns = df.columns.str.strip()
 
@@ -73,8 +75,10 @@ if uploaded_file is not None:
             nama_kolom_waktu = df.columns[0]
 
         if nama_kolom_waktu:
+            # Gunakan format campuran (mixed) agar fleksibel membaca format bawaan MicroSIP (YYYY-MM-DD atau DD/MM/YYYY)
             df[nama_kolom_waktu] = pd.to_datetime(
                 df[nama_kolom_waktu],
+                format="mixed",
                 errors="coerce"
             )
 
@@ -83,11 +87,10 @@ if uploaded_file is not None:
             hari_ini = waktu_local.date()
 
             # --- FILTER UTAMA UNTUK KPI (Kunci ke Hari Ini) ---
-            # Semua perhitungan statistik di bawah akan menggunakan df_hari_ini
             df_hari_ini = df[df[nama_kolom_waktu].dt.date == hari_ini].copy()
             keterangan_tanggal = f"Hari Ini ({hari_ini.strftime('%d-%m-%Y')})"
 
-            # Jika data hari ini kosong, tampilkan peringatan dan log tanggal yang tersedia
+            # Jika data hari ini kosong, tampilkan peringatan tanggal riil dari file Anda
             if df_hari_ini.empty and not df[nama_kolom_waktu].dropna().empty:
                 tanggal_tersedia = (
                     df[nama_kolom_waktu]
@@ -100,7 +103,7 @@ if uploaded_file is not None:
                 st.warning(
                     f"⚠️ Tidak ada panggilan pada tanggal "
                     f"{hari_ini.strftime('%d-%m-%Y')} (WIB). "
-                    f"Beberapa tanggal terakhir di file Anda: "
+                    f"Beberapa tanggal riil terakhir yang terdeteksi di file Anda: "
                     f"{', '.join(d.strftime('%d-%m-%Y') for d in tanggal_tersedia.index)}"
                 )
 
@@ -199,7 +202,6 @@ if uploaded_file is not None:
             with graph_col2:
                 st.subheader("📈 Tren Aktivitas Per Jam")
                 if nama_kolom_waktu:
-                    # Ambil komponen jam dari data waktu hari ini
                     tren_jam = df_hari_ini[nama_kolom_waktu].dt.hour.value_counts().sort_index()
                     st.line_chart(tren_jam)
                 else:
