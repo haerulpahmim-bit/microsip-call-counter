@@ -193,8 +193,31 @@ if uploaded_file is not None:
                 df_terfilter[nama_kolom_waktu] = pd.to_datetime(df_terfilter[nama_kolom_waktu], errors='coerce')
                 tren_jam = df_terfilter[nama_kolom_waktu].dt.hour.value_counts().sort_index()
                 st.line_chart(tren_jam)
+            
+            # --- 4. FITUR BARU: TABEL DATA LENGKAP DI PALING BAWAH ---
+            st.markdown("---")
+            st.subheader(f"📋 Tabel Log Riwayat Panggilan Lengkap — Tanggal {keterangan_tanggal}")
+            st.markdown("Berikut adalah daftar rincian seluruh baris panggilan yang masuk pada tanggal terpilih:")
+            
+            # Memilih kolom-kolom utama untuk ditampilkan agar rapi dan tidak terlalu lebar
+            kolom_pilihan = ["Local Time", "Type", "Name", "Number", "Duration", "Info"]
+            # Pastikan hanya menampilkan kolom yang benar-benar ada di file CSV Anda
+            kolom_tampil = [col for col in kolom_pilihan if col in df_terfilter.columns]
+            
+            # Membuat salinan data untuk tabel agar format durasinya lebih ramah dibaca (00:00)
+            df_tabel = df_terfilter[kolom_tampil].copy()
+            if "Duration" in df_tabel.columns:
+                df_tabel["Duration (Format)"] = df_tabel["Duration"].apply(format_durasi)
+            
+            # Menampilkan tabel interaktif bawaan Streamlit
+            st.dataframe(
+                df_tabel, 
+                use_container_width=True, # Tabel otomatis melebar memenuhi layar browser
+                hide_index=True           # Menyembunyikan kolom nomor baris default pandas
+            )
+            
         else:
-            st.info("💡 Grafik tidak ditampilkan karena tidak ada aktivitas panggilan pada tanggal terpilih.")
+            st.info("💡 Grafik dan Tabel tidak ditampilkan karena tidak ada aktivitas panggilan pada tanggal terpilih.")
 
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memproses file: {e}")
