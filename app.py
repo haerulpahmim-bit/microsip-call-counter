@@ -411,9 +411,10 @@ dan gunakan poin-poin markdown yang rapi.
             )
 
         if nama_kolom_waktu:
+            # Hapus timestamp dari tampilan data, tampilkan tanggal saja.
             df_display[nama_kolom_waktu] = (
                 df_display[nama_kolom_waktu]
-                .dt.strftime("%Y-%m-%d %H:%M:%S")
+                .dt.strftime("%Y-%m-%d")
             )
 
         if "Jam" in df_display.columns:
