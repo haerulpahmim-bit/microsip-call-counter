@@ -71,8 +71,8 @@ if uploaded_file is not None:
             # Bersihkan baris yang kosong atau tidak valid
             df = df.dropna(subset=['Tanggal_String'])
             
-            # --- 1. FITUR DINAMIS PILIHAN TANGGAL DI ATAS KPI ---
-            st.markdown("### 📅 Parameter Waktu Analisis")
+            # --- 1. FITUR SIDEBAR DIKEMBALIKAN (Dinamis Berdasarkan Isi CSV) ---
+            st.sidebar.header("📅 Parameter Analisis")
             
             # Ambil semua tanggal unik yang ada di file CSV, urutkan dari yang terbaru
             list_tanggal_riil = sorted(df['Tanggal_String'].unique(), reverse=True)
@@ -87,9 +87,9 @@ if uploaded_file is not None:
                     except:
                         pilihan_label_tanggal[tgl] = tgl
 
-                # Tampilkan komponen tombol Dropdown tepat di atas KPI
-                tanggal_terpilih = st.selectbox(
-                    "Silakan pilih tanggal panggilan yang ingin Anda cek dari file CSV:",
+                # Menampilkan tombol Dropdown di dalam SIDEBAR
+                tanggal_terpilih = st.sidebar.selectbox(
+                    "Pilih Tanggal Panggilan:",
                     options=list_tanggal_riil,
                     format_func=lambda x: pilihan_label_tanggal[x]
                 )
@@ -194,7 +194,7 @@ if uploaded_file is not None:
                 tren_jam = df_terfilter[nama_kolom_waktu].dt.hour.value_counts().sort_index()
                 st.line_chart(tren_jam)
             
-            # --- 4. FITUR BARU: TABEL DATA LENGKAP DI PALING BAWAH ---
+            # --- 4. TABEL DATA LENGKAP DI PALING BAWAH ---
             st.markdown("---")
             st.subheader(f"📋 Tabel Log Riwayat Panggilan Lengkap — Tanggal {keterangan_tanggal}")
             st.markdown("Berikut adalah daftar rincian seluruh baris panggilan yang masuk pada tanggal terpilih:")
@@ -212,8 +212,8 @@ if uploaded_file is not None:
             # Menampilkan tabel interaktif bawaan Streamlit
             st.dataframe(
                 df_tabel, 
-                use_container_width=True, # Tabel otomatis melebar memenuhi layar browser
-                hide_index=True           # Menyembunyikan kolom nomor baris default pandas
+                use_container_width=True, 
+                hide_index=True           
             )
             
         else:
