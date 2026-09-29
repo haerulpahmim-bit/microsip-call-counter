@@ -65,7 +65,7 @@ if uploaded_file is not None:
         nama_kolom_waktu = "Local Time"
 
         if nama_kolom_waktu in df.columns:
-            # PERBAIKAN DI SINI: Mengambil komponen tanggal lokal (indeks ke-0 setelah split spasi)
+            # Mengambil komponen tanggal lokal (indeks ke-0 setelah split spasi)
             df['Tanggal_String'] = df[nama_kolom_waktu].apply(lambda x: str(x).split()[0] if pd.notna(x) else None)
             
             # Bersihkan baris yang kosong atau tidak valid
@@ -114,7 +114,6 @@ if uploaded_file is not None:
         # Mengunci nama kolom Durasi ke 'Duration' sesuai file log MicroSIP Anda
         nama_kolom_durasi = "Duration"
         total_durasi_detik = 0
-        avg_durasi_detik = 0
 
         if nama_kolom_durasi in df_terfilter.columns and total_panggilan > 0:
             df_terfilter[nama_kolom_durasi] = pd.to_numeric(
@@ -123,10 +122,12 @@ if uploaded_file is not None:
             ).fillna(0)
 
             total_durasi_detik = df_terfilter[nama_kolom_durasi].sum()
-            avg_durasi_detik = df_terfilter[nama_kolom_durasi].mean()
 
         # Mengunci nama kolom Info ke 'Info' sesuai file log MicroSIP Anda
         nama_kolom_status = "Info"
+        
+        # Mengunci nama kolom nomor telepon ke 'Number' sesuai file log MicroSIP Anda
+        nama_kolom_nomor = "Number"
 
         # Aturan koneksi: Durasi >= 90 detik (1 menit 30 detik)
         panggilan_terhubung = 0
@@ -139,6 +140,11 @@ if uploaded_file is not None:
             if total_panggilan > 0
             else 0
         )
+
+        # Perhitungan total nomor unik yang dihubungi hari itu
+        total_nomor_unik = 0
+        if nama_kolom_nomor in df_terfilter.columns:
+            total_nomor_unik = df_terfilter[nama_kolom_nomor].nunique()
 
         # --- Render KPI Dashboard ---
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -164,8 +170,8 @@ if uploaded_file is not None:
 
         with kpi4:
             st.metric(
-                label="⏱️ Rata-rata Durasi",
-                value=format_durasi(avg_durasi_detik)
+                label="👤 Total Nomor Unik",
+                value=f"{total_nomor_unik}"
             )
 
         # --- 3. Visualisasi Grafik (Menggunakan Data Terfilter) ---
