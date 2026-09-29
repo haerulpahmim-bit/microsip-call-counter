@@ -83,10 +83,11 @@ if uploaded_file is not None:
             opsi_filter = st.sidebar.radio(
                 "Rentang Waktu:",
                 [
-                    "Semua Riwayat Data",
                     "Khusus Hari Ini",
-                    "Pilih Tanggal Kustom"
-                ]
+                    "Pilih Tanggal Kustom",
+                    "Semua Riwayat Data"
+                ],
+                index=0
             )
 
             hari_ini = datetime.today().date()
@@ -122,7 +123,10 @@ if uploaded_file is not None:
         st.success("Analisis data berhasil diperbarui!")
 
         # --- 2. Perhitungan KPI Utama ---
-        st.subheader("📈 Key Performance Indicators (KPI)")
+        # KPI menggunakan data yang SUDAH TERFILTER.
+        # Default filter adalah "Khusus Hari Ini", sehingga KPI
+        # tidak menghitung seluruh riwayat data.
+        st.subheader(f"📈 Key Performance Indicators (KPI) — {keterangan_tanggal}")
 
         total_panggilan = len(df)
 
