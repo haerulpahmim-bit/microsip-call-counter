@@ -211,6 +211,15 @@ if uploaded_file is not None:
         with kpi4:
             st.metric(label="⏱️ Rata-rata Durasi", value=format_durasi(avg_durasi_detik))
 
+        # --- BAGIAN KEMBALI: Tampilan Tabel Data ---
+        st.markdown("---")
+        st.subheader("📋 Pratinjau Data Terfilter")
+        if not df.empty:
+            # Menampilkan 50 data teratas agar performa aplikasi tetap cepat
+            st.dataframe(df.head(50), use_container_width=True)
+        else:
+            st.info("Tidak ada data untuk ditampilkan pada rentang waktu ini.")
+
         # --- 3. Visualisasi Grafik ---
         if total_panggilan > 0:
             st.markdown("---")
@@ -278,4 +287,3 @@ if uploaded_file is not None:
                 st.info("Silakan klik tombol **'Generate / Refresh AI Insights'** di atas untuk melihat analisis.")
 
     except Exception as e:
-        st.error(f"Gagal memproses file CSV: {e}")
