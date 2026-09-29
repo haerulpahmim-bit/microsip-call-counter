@@ -29,7 +29,7 @@ def format_durasi(detik):
             return f"{jam:02d}:{menit:02d}:{sisa_detik:02d}"
         return f"{menit:02d}:{sisa_detik:02d}"
     except Exception:
-        return str(detik)
+        return detik
 
 
 def detik_ke_teks(detik):
@@ -91,6 +91,8 @@ if uploaded_file is not None:
                 index=0
             )
 
+            # Gunakan tanggal berdasarkan waktu lokal Indonesia (WIB).
+            # Ini mengikuti waktu lokal server/Streamlit secara eksplisit ke Asia/Jakarta.
             waktu_local = datetime.now(ZoneInfo("Asia/Jakarta"))
             hari_ini = waktu_local.date()
 
@@ -105,6 +107,8 @@ if uploaded_file is not None:
                     f"Hari Ini ({hari_ini.strftime('%d-%m-%Y')})"
                 )
 
+                # Jika tidak ada data hari ini, tampilkan informasi tanggal
+                # yang tersedia agar penyebabnya mudah diketahui.
                 if df.empty and not tanggal_asli_sebelum_filter.dropna().empty:
                     tanggal_tersedia = (
                         tanggal_asli_sebelum_filter
@@ -145,10 +149,14 @@ if uploaded_file is not None:
         st.success("Analisis data berhasil diperbarui!")
 
         # --- 2. Perhitungan KPI Utama ---
+        # KPI menggunakan data yang SUDAH TERFILTER.
+        # Default filter adalah "Khusus Hari Ini", sehingga KPI
+        # tidak menghitung seluruh riwayat data.
         st.subheader(f"📈 Key Performance Indicators (KPI) — {keterangan_tanggal}")
 
         total_panggilan = len(df)
 
+        # Deteksi kolom durasi
         list_kolom_durasi = [
             col for col in df.columns
             if "dur" in col.lower()
@@ -173,6 +181,9 @@ if uploaded_file is not None:
             if total_panggilan > 0:
                 avg_durasi_detik = df[nama_kolom_durasi].mean()
 
+        # --- Deteksi Status & Panggilan Terhubung ---
+        # Panggilan dianggap TERHUBUNG jika durasinya lebih dari 2 menit
+        # (lebih dari 120 detik).
         list_kolom_status = [
             col for col in df.columns
             if "status" in col.lower()
@@ -180,12 +191,24 @@ if uploaded_file is not None:
             or "dir" in col.lower()
         ]
 
-        nama_kolom_status = list_kolom_status[0] if list_kolom_status else None
+        nama_kolom_status = None
+
+        if list_kolom_status:
+            nama_kolom_status = list_kolom_status[0]
+
+        # Aturan koneksi:
+        # Durasi > 120 detik = Terhubung
+        # Durasi <= 120 detik = Tidak Terhubung
         panggilan_terhubung = 0
 
         if nama_kolom_durasi:
             mask_terhubung = df[nama_kolom_durasi] > 120
             panggilan_terhubung = int(mask_terhubung.sum())
+
+        panggilan_tidak_terhubung = max(
+            total_panggilan - panggilan_terhubung,
+            0
+        )
 
         persentase_terhubung = (
             (panggilan_terhubung / total_panggilan) * 100
@@ -193,94 +216,263 @@ if uploaded_file is not None:
             else 0
         )
 
+        # --- KPI Dashboard ---
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
         with kpi1:
-            st.metric(label="📞 Total Panggilan", value=f"{total_panggilan}")
+            st.metric(
+                label="📞 Total Panggilan",
+                value=f"{total_panggilan}"
+            )
 
         with kpi2:
             st.metric(
-                label="🔗 Panggilan Terhubung (>2 mnt)",
+                label="🔗 Panggilan Terhubung",
                 value=f"{panggilan_terhubung}",
                 delta=f"{persentase_terhubung:.1f}%"
             )
 
         with kpi3:
-            st.metric(label="⏱️ Total Waktu Bicara", value=detik_ke_teks(total_durasi_detik))
+            st.metric(
+                label="⏱️ Total Waktu Bicara",
+                value=detik_ke_teks(total_durasi_detik)
+            )
 
         with kpi4:
-            st.metric(label="⏱️ Rata-rata Durasi", value=format_durasi(avg_durasi_detik))
-
-        # --- Tampilan Tabel Data ---
-        st.markdown("---")
-        st.subheader("📋 Pratinjau Data Terfilter")
-        if not df.empty:
-            st.dataframe(df.head(50), use_container_width=True)
-        else:
-            st.info("Tidak ada data untuk ditampilkan pada rentang waktu ini.")
+            st.metric(
+                label="⏱️ Rata-rata Durasi",
+                value=format_durasi(avg_durasi_detik)
+            )
 
         # --- 3. Visualisasi Grafik ---
+        ringkasan_status_teks = ""
+        tren_jam_teks = ""
+
         if total_panggilan > 0:
             st.markdown("---")
+
             graph_col1, graph_col2 = st.columns(2)
 
             with graph_col1:
                 st.subheader("📊 Status Panggilan")
+
                 if nama_kolom_status:
                     ringkasan = df[nama_kolom_status].value_counts()
                     st.bar_chart(ringkasan)
+                    ringkasan_status_teks = str(
+                        ringkasan.to_dict()
+                    )
                 else:
                     st.info("Kolom status tidak terdeteksi.")
 
             with graph_col2:
-                st.subheader("📈 Tren Aktivitas per Jam")
+                st.subheader("📈 Tren Aktivitas Panggilan per Jam")
+
                 if nama_kolom_waktu:
-                    df['Jam'] = df[nama_kolom_waktu].dt.hour
-                    tren_jam = df['Jam'].value_counts().sort_index()
+                    df["Jam"] = df[nama_kolom_waktu].dt.hour
+                    tren_jam = df["Jam"].value_counts().sort_index()
                     st.line_chart(tren_jam)
+                    tren_jam_teks = str(tren_jam.to_dict())
                 else:
-                    st.info("Kolom waktu tidak terdeteksi untuk tren jam.")
+                    st.info("Kolom waktu tidak valid.")
 
-            # --- 4. Integrasi Google GenAI (Gemini) ---
+            # --- Grafik Terhubung vs Tidak Terhubung ---
             st.markdown("---")
-            st.subheader("🤖 AI Insights (Gemini)")
+            st.subheader("🔗 Analisis Panggilan Terhubung")
 
-            tombol_ai = st.button("🔄 Generate / Refresh AI Insights")
+            koneksi_col1, koneksi_col2 = st.columns(2)
 
-            if tombol_ai:
-                try:
-                    client = genai.Client()
-                    
-                    prompt_data = f"""
-                    Berikan analisis singkat dan rekomendasi taktis berdasarkan data MicroSIP berikut:
-                    - Total Panggilan: {total_panggilan}
-                    - Panggilan Efektif/Terhubung (>2 menit): {panggilan_terhubung} ({persentase_terhubung:.1f}%)
-                    - Total Durasi Bicara: {detik_ke_teks(total_durasi_detik)}
-                    - Rata-rata Durasi per Panggilan: {format_durasi(avg_durasi_detik)}
-                    """
-                    
-                    with st.spinner("AI sedang menganalisis data produktivitas..."):
-                        # Mencoba model utama
-                        model_yang_used = 'gemini-3.8-flash'
-                        try:
-                            response = client.models.generate_content(
-                                model=model_yang_used,
-                                contents=prompt_data,
+            with koneksi_col1:
+                st.metric(
+                    "Panggilan Terhubung",
+                    f"{panggilan_terhubung} / {total_panggilan}"
+                )
+
+            with koneksi_col2:
+                st.metric(
+                    "Tidak Terhubung",
+                    f"{panggilan_tidak_terhubung} / {total_panggilan}"
+                )
+
+            data_koneksi = pd.Series({
+                "Terhubung": panggilan_terhubung,
+                "Tidak Terhubung": panggilan_tidak_terhubung
+            })
+
+            st.bar_chart(data_koneksi)
+
+        # --- 4. INTEGRASI AI AGENT ---
+        st.markdown("---")
+        st.subheader("🤖 AI Data Analyst Consultant")
+
+        if "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+
+            if st.button("🪄 Jalankan AI Agent Audit"):
+                with st.spinner(
+                    "AI Agent sedang menganalisis data log Anda..."
+                ):
+                    prompt_konteks = f"""
+Anda adalah seorang AI Data Analyst Consultant profesional
+untuk operasional Call Center & Telemarketing perusahaan.
+
+Tugas Anda adalah mengaudit data statistik panggilan MicroSIP berikut:
+
+- Periode Analisis: {keterangan_tanggal}
+- Total Volume Panggilan: {total_panggilan} panggilan
+- Panggilan Terhubung: {panggilan_terhubung} panggilan (durasi > 2 menit / > 120 detik)
+- Persentase Panggilan Terhubung: {persentase_terhubung:.1f}%
+- Panggilan Tidak Terhubung: {panggilan_tidak_terhubung} panggilan (durasi <= 2 menit)
+- Total Waktu Bicara: {detik_ke_teks(total_durasi_detik)}
+- Rata-rata Durasi per Panggilan: {format_durasi(avg_durasi_detik)}
+- Distribusi Status Panggilan: {ringkasan_status_teks}
+- Tren Panggilan per Jam (Format Jam: Jumlah): {tren_jam_teks}
+
+Berikan analisis ringkas, tajam, dan profesional yang mencakup:
+
+1. **Evaluasi Performa**:
+   Analisis volume, panggilan terhubung, persentase koneksi,
+   dan durasi panggilan berdasarkan data.
+
+2. **Analisis Jam Sibuk**:
+   Insight tentang kapan traffic tertinggi terjadi
+   dan rekomendasi alokasi agen.
+
+3. **Analisis Koneksi**:
+   Jelaskan rasio panggilan terhubung dan tidak terhubung.
+
+4. **Rekomendasi Bisnis**:
+   Tindakan nyata apa yang dapat dilakukan manajemen
+   untuk meningkatkan penjualan/layanan berdasarkan data.
+
+Jawab dalam Bahasa Indonesia yang profesional
+dan gunakan poin-poin markdown yang rapi.
+"""
+
+                    try:
+                        client = genai.Client(api_key=api_key)
+
+                        response = client.models.generate_content(
+                            model="gemini-3.8-flash",
+                            contents=prompt_konteks
+                        )
+
+                        st.markdown(response.text)
+
+                    except Exception as err_utama:
+                        if (
+                            "503" in str(err_utama)
+                            or "UNAVAILABLE" in str(err_utama)
+                        ):
+                            st.caption(
+                                "ℹ️ Model utama sibuk, mengalihkan otomatis "
+                                "ke saluran cadangan AI..."
                             )
-                            st.write(response.text)
-                        except Exception as inner_error:
-                            # Fallback otomatis jika model utama 503 / sibuk
-                            st.info("🔄 Server utama sibuk. Mengalihkan ke model cadangan (Gemini 1.5 Flash)...")
-                            response = client.models.generate_content(
-                                model='gemini-1.5-flash',
-                                contents=prompt_data,
+
+                            try:
+                                response = client.models.generate_content(
+                                    model="gemini-2.0-flash",
+                                    contents=prompt_konteks
+                                )
+
+                                st.markdown(response.text)
+
+                            except Exception as err_cadangan:
+                                st.error(
+                                    "⚠️ Semua server AI Google saat ini "
+                                    "sedang mengalami lonjakan permintaan "
+                                    "yang sangat tinggi. Silakan klik "
+                                    "kembali tombol audit beberapa saat lagi."
+                                )
+                        else:
+                            st.error(
+                                f"AI Agent gagal merespon. Error: {err_utama}"
                             )
-                            st.write(response.text)
-                                
-                except Exception as e:
-                    st.error(f"Gagal memuat AI Insights. Silakan coba sesaat lagi. Error: {e}")
-            else:
-                st.info("Silakan klik tombol **'Generate / Refresh AI Insights'** di atas untuk melihat analisis.")
+        else:
+            st.warning(
+                "⚠️ Kunci API Gemini (`GEMINI_API_KEY`) belum "
+                "dikonfigurasi di Streamlit Secrets. "
+                "Fitur AI Agent dinonaktifkan."
+            )
+
+        # --- 5. Tabel Data Explorer ---
+        st.markdown("---")
+        st.subheader("🔍 Penjelajah Data Log")
+
+        search_query = st.text_input(
+            "Cari data (Ketik nomor, nama kontak, status, atau kata kunci lainnya):"
+        )
+
+        df_display = df.copy()
+
+        if nama_kolom_durasi:
+            df_display[nama_kolom_durasi] = (
+                df_display[nama_kolom_durasi].apply(format_durasi)
+            )
+
+        if nama_kolom_waktu:
+            # Hapus timestamp dari tampilan data, tampilkan tanggal saja.
+            df_display[nama_kolom_waktu] = (
+                df_display[nama_kolom_waktu]
+                .dt.strftime("%Y-%m-%d")
+            )
+
+        if "Jam" in df_display.columns:
+            df_display = df_display.drop(columns=["Jam"])
+
+        if search_query:
+            mask = (
+                df_display
+                .astype(str)
+                .apply(
+                    lambda x: x.str.contains(
+                        search_query,
+                        case=False,
+                        na=False
+                    )
+                )
+                .any(axis=1)
+            )
+
+            df_display = df_display[mask]
+
+            st.info(
+                f"📋 **Hasil Pencarian untuk '{search_query}' "
+                f"({keterangan_tanggal}):** "
+                f"Ditemukan {len(df_display)} Panggilan"
+            )
+        else:
+            st.info(
+                f"📋 **Jumlah Total Panggilan Terfilter "
+                f"({keterangan_tanggal}):** "
+                f"{len(df_display)} Panggilan"
+            )
+
+        st.dataframe(
+            df_display,
+            use_container_width=True
+        )
+
+        csv_data = df_display.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="📥 Unduh Laporan (.CSV)",
+            data=csv_data,
+            file_name=(
+                f"Laporan_MicroSIP_"
+                f"{datetime.now().strftime('%Y%m%d')}.csv"
+            ),
+            mime="text/csv"
+        )
 
     except Exception as e:
-        st.error(f"Gagal memproses file CSV: {e}")
+        st.error(
+            f"Gagal memproses file CSV. Error: {e}"
+        )
+
+else:
+    st.info(
+        "💡 Petunjuk: Silakan unggah file `Log.csv` "
+        "dari folder data lokal aplikasi MicroSIP Anda "
+        "untuk memulai."
+    )
