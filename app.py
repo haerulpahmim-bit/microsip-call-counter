@@ -152,6 +152,8 @@ if uploaded_file is not None:
                 avg_durasi_detik = df[nama_kolom_durasi].mean()
 
         # --- Deteksi Status & Panggilan Terhubung ---
+        # Panggilan dianggap TERHUBUNG jika durasinya lebih dari 2 menit
+        # (lebih dari 120 detik).
         list_kolom_status = [
             col for col in df.columns
             if "status" in col.lower()
@@ -160,32 +162,17 @@ if uploaded_file is not None:
         ]
 
         nama_kolom_status = None
-        panggilan_terhubung = 0
 
         if list_kolom_status:
             nama_kolom_status = list_kolom_status[0]
 
-            status_text = (
-                df[nama_kolom_status]
-                .astype(str)
-                .str.lower()
-                .str.strip()
-            )
+        # Aturan koneksi:
+        # Durasi > 120 detik = Terhubung
+        # Durasi <= 120 detik = Tidak Terhubung
+        panggilan_terhubung = 0
 
-            kata_terhubung = [
-                "connected",
-                "connect",
-                "answered",
-                "answer",
-                "terhubung",
-                "tersambung",
-                "answered call"
-            ]
-
-            mask_terhubung = status_text.apply(
-                lambda x: any(kata in x for kata in kata_terhubung)
-            )
-
+        if nama_kolom_durasi:
+            mask_terhubung = df[nama_kolom_durasi] > 120
             panggilan_terhubung = int(mask_terhubung.sum())
 
         panggilan_tidak_terhubung = max(
@@ -303,9 +290,9 @@ Tugas Anda adalah mengaudit data statistik panggilan MicroSIP berikut:
 
 - Periode Analisis: {keterangan_tanggal}
 - Total Volume Panggilan: {total_panggilan} panggilan
-- Panggilan Terhubung: {panggilan_terhubung} panggilan
+- Panggilan Terhubung: {panggilan_terhubung} panggilan (durasi > 2 menit / > 120 detik)
 - Persentase Panggilan Terhubung: {persentase_terhubung:.1f}%
-- Panggilan Tidak Terhubung: {panggilan_tidak_terhubung} panggilan
+- Panggilan Tidak Terhubung: {panggilan_tidak_terhubung} panggilan (durasi <= 2 menit)
 - Total Waktu Bicara: {detik_ke_teks(total_durasi_detik)}
 - Rata-rata Durasi per Panggilan: {format_durasi(avg_durasi_detik)}
 - Distribusi Status Panggilan: {ringkasan_status_teks}
