@@ -211,11 +211,10 @@ if uploaded_file is not None:
         with kpi4:
             st.metric(label="⏱️ Rata-rata Durasi", value=format_durasi(avg_durasi_detik))
 
-        # --- BAGIAN KEMBALI: Tampilan Tabel Data ---
+        # --- Tampilan Tabel Data ---
         st.markdown("---")
         st.subheader("📋 Pratinjau Data Terfilter")
         if not df.empty:
-            # Menampilkan 50 data teratas agar performa aplikasi tetap cepat
             st.dataframe(df.head(50), use_container_width=True)
         else:
             st.info("Tidak ada data untuk ditampilkan pada rentang waktu ini.")
@@ -242,7 +241,7 @@ if uploaded_file is not None:
                 else:
                     st.info("Kolom waktu tidak terdeteksi untuk tren jam.")
 
-            # --- 4. Integrasi Google GenAI (Dengan Fallback & Retry) ---
+            # --- 4. Integrasi Google GenAI (Gemini) ---
             st.markdown("---")
             st.subheader("🤖 AI Insights (Gemini)")
 
@@ -261,29 +260,27 @@ if uploaded_file is not None:
                     """
                     
                     with st.spinner("AI sedang menganalisis data produktivitas..."):
+                        # Mencoba model utama
+                        model_yang_used = 'gemini-3.8-flash'
                         try:
                             response = client.models.generate_content(
-                                model='gemini-3.8-flash',
+                                model=model_yang_used,
                                 contents=prompt_data,
                             )
                             st.write(response.text)
-                        except Exception as e:
-                            if "503" in str(e) or "UNAVAILABLE" in str(e).upper():
-                                st.info("🔄 Model utama sibuk. Mengalihkan ke model cadangan (Gemini 1.5 Flash)...")
-                                response = client.models.generate_content(
-                                    model='gemini-1.5-flash',
-                                    contents=prompt_data,
-                                )
-                                st.write(response.text)
-                            else:
-                                raise e
+                        except Exception as inner_error:
+                            # Fallback otomatis jika model utama 503 / sibuk
+                            st.info("🔄 Server utama sibuk. Mengalihkan ke model cadangan (Gemini 1.5 Flash)...")
+                            response = client.models.generate_content(
+                                model='gemini-1.5-flash',
+                                contents=prompt_data,
+                            )
+                            st.write(response.text)
                                 
                 except Exception as e:
-                    st.error(
-                        f"Gagal memuat AI Insights karena server Google sedang sibuk. "
-                        f"Silakan klik kembali tombol di atas dalam beberapa saat. (Error: {e})"
-                    )
+                    st.error(f"Gagal memuat AI Insights. Silakan coba sesaat lagi. Error: {e}")
             else:
                 st.info("Silakan klik tombol **'Generate / Refresh AI Insights'** di atas untuk melihat analisis.")
 
     except Exception as e:
+        st.error(f"Gagal memproses file CSV: {e}")
